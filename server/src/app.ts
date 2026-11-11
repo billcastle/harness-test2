@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import { registerAuth, type AuthConfig } from './auth/plugin.js';
 import type { Db } from './db.js';
 import { AppError } from './errors.js';
 import { isValidDate, manilaToday, monthRange, type Clock } from './lib/time.js';
@@ -13,7 +14,18 @@ import { summarize } from './repo/summary.js';
 export interface AppDeps {
   db: Db;
   now?: Clock;
-  logger?: boolean;
+  logger?: boolean | { level: string; stream: NodeJS.WritableStream };
+  /** Test aid: called for every route as it is registered. */
+  onRoute?: (route: { method: string | string[]; url: string; public: boolean }) => void;
+  /** Required unless `insecureNoAuth` is set: the app refuses to be built without authentication. */
+  auth?: AuthConfig;
+  /**
+   * Fastify trustProxy setting for reading the real client IP from X-Forwarded-For. Leave false unless a reverse
+   * proxy you control (Caddy on the compose network) is in front; then trust only that hop, e.g. "172.16.0.0/12".
+   */
+  trustProxy?: boolean | string | string[];
+  /** Domain-logic tests only. Never set in production code. */
+  insecureNoAuth?: boolean;
 }
 
 function idParam(req: FastifyRequest): number {
@@ -29,12 +41,11 @@ function rangeQuery(q: Record<string, string | undefined>, today: string): { fro
   return { from: q.from, to: q.to };
 }
 
-/**
- * NOTE: no authentication yet (step 3 adds the PIN gate as a default-deny hook). Do not expose this app until then.
- */
-export function buildApp({ db, now = () => new Date(), logger = false }: AppDeps): FastifyInstance {
-  const app = Fastify({ logger, bodyLimit: 1_048_576 });
+export function buildApp({ db, now = () => new Date(), logger = false, auth, trustProxy = false, insecureNoAuth = false, onRoute }: AppDeps): FastifyInstance {
+  if (!auth && !insecureNoAuth) throw new Error('buildApp requires an `auth` config (the app is default-deny)');
+  const app = Fastify({ logger, bodyLimit: 1_048_576, trustProxy });
   const today = () => manilaToday(now());
+  if (onRoute) app.addHook('onRoute', (r) => onRoute({ method: r.method, url: r.url, public: Boolean(r.config?.public) }));
 
   app.setErrorHandler((err: Error & { statusCode?: number; validation?: unknown }, req, reply) => {
     if (err instanceof AppError) return reply.status(err.status).send({ error: err.message });
@@ -43,7 +54,8 @@ export function buildApp({ db, now = () => new Date(), logger = false }: AppDeps
     return reply.status(500).send({ error: 'internal error' });
   });
 
-  app.get('/api/health', async () => ({ ok: true }));
+  // Hooks only apply to routes registered after them, so auth goes first. Every route below is protected by default.
+  if (auth) registerAuth(app, db, now, auth);
 
   // ---- categories
   app.get('/api/categories', async () => ({ items: await listCategories(db) }));
