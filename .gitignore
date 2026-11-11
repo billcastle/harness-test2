@@ -1,0 +1,6 @@
+# real bank statements and local state: never commit
+statements/
+.gstack/
+.DS_Store
+node_modules/
+spike/out/
