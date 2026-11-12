@@ -4,6 +4,7 @@ import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { PinScreen } from './auth/PinScreen';
 import { api, SESSION_EXPIRED } from './lib/api';
+import { CategoriesPage } from './pages/Categories';
 import { ImportPage } from './pages/Import';
 import { TransactionsPage } from './pages/Transactions';
 
@@ -42,7 +43,7 @@ export function App() {
         <Button type="button" variant="outline" onClick={() => void logout()}>Sign out</Button>
       </header>
       <nav aria-label="Main" className="mb-10 flex gap-3">
-        {[{ to: '/transactions', label: 'Transactions' }, { to: '/import', label: 'Import' }].map(({ to, label }) => (
+        {[{ to: '/transactions', label: 'Transactions' }, { to: '/import', label: 'Import' }, { to: '/categories', label: 'Categories' }].map(({ to, label }) => (
           <NavLink key={to} to={to} className={({ isActive }) => `inline-flex h-11 items-center rounded-full px-6 text-base font-medium transition-colors ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
             {label}
           </NavLink>
@@ -53,6 +54,7 @@ export function App() {
           <Route path="/" element={<Navigate to="/transactions" replace />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/categories" element={<CategoriesPage />} />
           <Route path="*" element={<Navigate to="/transactions" replace />} />
         </Routes>
       </main>

@@ -7,6 +7,14 @@ export interface Category {
   name: string;
   color: string;
   isSystem: boolean;
+  /** Live transactions in this category. */
+  transactionCount: number;
+  /** Remembered merchants pointing at this category. */
+  ruleCount: number;
+}
+export interface MerchantRule {
+  merchant: string;
+  categoryId: number;
 }
 export interface Transaction {
   id: number;
@@ -134,6 +142,11 @@ export const api = {
   login: (pin: string) => request<{ ok: true }>('POST', '/api/login', { pin }),
   logout: () => request<{ ok: true }>('POST', '/api/logout'),
   categories: () => request<{ items: Category[] }>('GET', '/api/categories').then((r) => r.items),
+  createCategory: (input: { name: string; color?: string }) => request<Category>('POST', '/api/categories', input),
+  updateCategory: (id: number, input: { name?: string; color?: string }) => request<Category>('PATCH', `/api/categories/${id}`, input),
+  deleteCategory: (id: number) => request<{ reassignedTransactions: number; reassignedRules: number }>('DELETE', `/api/categories/${id}`),
+  merchantRules: () => request<{ items: MerchantRule[] }>('GET', '/api/merchant-rules').then((r) => r.items),
+  deleteMerchantRule: (merchant: string) => request<void>('DELETE', `/api/merchant-rules?merchant=${encodeURIComponent(merchant)}`),
   transactions: (f: TransactionFilter) =>
     request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, page: f.page })}`),
   createTransaction: (input: TransactionInput) => request<Transaction>('POST', '/api/transactions', input),

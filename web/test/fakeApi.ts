@@ -2,7 +2,7 @@
 // Server behavior itself is covered by the server's own tests; this only lets the UI tests run fast and deterministically.
 import { vi } from 'vitest';
 import { checkAmount } from '../src/lib/money';
-import type { Category, ImportBatch, Kind, Preview, Transaction } from '../src/lib/api';
+import type { Category, ImportBatch, Kind, MerchantRule, Preview, Transaction } from '../src/lib/api';
 
 export interface Call {
   method: string;
@@ -14,15 +14,15 @@ export interface Call {
 
 export function createFakeApi(seed: { categories?: Category[]; transactions?: Partial<Transaction>[]; signedIn?: boolean } = {}) {
   const categories: Category[] = seed.categories ?? [
-    { id: 1, name: 'Uncategorized', color: '#94a3b8', isSystem: true },
-    { id: 2, name: 'Food', color: '#16a34a', isSystem: false },
-    { id: 3, name: 'Transport', color: '#2563eb', isSystem: false },
+    { id: 1, name: 'Uncategorized', color: '#94a3b8', isSystem: true, transactionCount: 0, ruleCount: 0 },
+    { id: 2, name: 'Food', color: '#16a34a', isSystem: false, transactionCount: 0, ruleCount: 0 },
+    { id: 3, name: 'Transport', color: '#2563eb', isSystem: false, transactionCount: 0, ruleCount: 0 },
   ];
   let nextId = 100;
   const txs: (Transaction & { deleted?: boolean })[] = (seed.transactions ?? []).map((t) => ({
     id: nextId++, date: '2026-11-10', amountCentavos: 10000, description: '', categoryId: 1, categoryName: 'Uncategorized', source: 'manual', kind: 'expense' as Kind, importBatchId: null, ...t,
   }));
-  const state = { signedIn: seed.signedIn ?? true, pin: '4821', preview: null as Preview | null, batches: [] as ImportBatch[], calls: [] as Call[], failures: [] as { match: RegExp; status: number; error: string; once: boolean; retryAfterSeconds?: number }[], delayMs: 0 };
+  const state = { signedIn: seed.signedIn ?? true, pin: '4821', preview: null as Preview | null, batches: [] as ImportBatch[], rules: [] as MerchantRule[], calls: [] as Call[], failures: [] as { match: RegExp; status: number; error: string; once: boolean; retryAfterSeconds?: number }[], delayMs: 0 };
 
   const json = (status: number, body: unknown) =>
     new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -55,7 +55,51 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
     if (!state.signedIn) return json(401, { error: 'not signed in' });
     if (p === '/api/session') return json(200, { authenticated: true });
     if (p === '/api/logout') { state.signedIn = false; return json(200, { ok: true }); }
-    if (p === '/api/categories') return json(200, { items: categories });
+    if (p === '/api/categories' && method === 'GET') {
+      const withCounts = categories.map((c) => ({ ...c, transactionCount: txs.filter((t) => !t.deleted && t.categoryId === c.id).length, ruleCount: state.rules.filter((r) => r.categoryId === c.id).length }));
+      return json(200, { items: withCounts });
+    }
+    if (p === '/api/categories' && method === 'POST') {
+      const name = String(body?.name ?? '').trim();
+      if (!name || name.length > 60) return json(400, { error: 'name must be 1 to 60 characters' });
+      if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) return json(409, { error: 'a category with that name already exists' });
+      const c: Category = { id: nextId++, name, color: String(body?.color ?? '#64748b'), isSystem: false, transactionCount: 0, ruleCount: 0 };
+      categories.push(c);
+      return json(201, c);
+    }
+    const cm = /^\/api\/categories\/(\d+)$/.exec(p);
+    if (cm) {
+      const c = categories.find((x) => x.id === Number(cm[1]));
+      if (!c) return json(404, { error: 'category not found' });
+      if (method === 'PATCH') {
+        if (body?.name !== undefined) {
+          if (c.isSystem) return json(409, { error: 'the Uncategorized category cannot be renamed' });
+          const name = String(body.name).trim();
+          if (categories.some((x) => x !== c && x.name.toLowerCase() === name.toLowerCase())) return json(409, { error: 'a category with that name already exists' });
+          c.name = name;
+          txs.filter((t) => t.categoryId === c.id).forEach((t) => (t.categoryName = name));
+        }
+        if (body?.color !== undefined) c.color = String(body.color);
+        return json(200, c);
+      }
+      if (method === 'DELETE') {
+        if (c.isSystem) return json(409, { error: 'the Uncategorized category cannot be deleted' });
+        const moved = txs.filter((t) => t.categoryId === c.id);
+        moved.forEach((t) => { t.categoryId = 1; t.categoryName = 'Uncategorized'; });
+        const movedRules = state.rules.filter((r) => r.categoryId === c.id);
+        movedRules.forEach((r) => (r.categoryId = 1));
+        categories.splice(categories.indexOf(c), 1);
+        return json(200, { reassignedTransactions: moved.length, reassignedRules: movedRules.length });
+      }
+    }
+    if (p === '/api/merchant-rules' && method === 'GET') return json(200, { items: state.rules });
+    if (p === '/api/merchant-rules' && method === 'DELETE') {
+      const m = url.searchParams.get('merchant');
+      const r = state.rules.find((x) => x.merchant === m);
+      if (!r) return json(404, { error: 'rule not found' });
+      state.rules = state.rules.filter((x) => x !== r);
+      return json(204, null);
+    }
 
     // ---- statement import
     if (p === '/api/import/parse' && method === 'POST') return state.preview ? json(200, state.preview) : json(422, { error: 'no preview configured', code: 'unreadable' });

@@ -7,19 +7,36 @@ export interface Category {
   name: string;
   color: string;
   isSystem: boolean;
+  /** Live (not deleted) transactions in this category. */
+  transactionCount: number;
+  /** Remembered merchants that point at this category. */
+  ruleCount: number;
 }
 interface Row {
   id: string;
   name: string;
   color: string;
   is_system: boolean;
+  tx: string;
+  rules: string;
 }
-const COLS = 'id::text as id, name, color, is_system';
-const map = (r: Row): Category => ({ id: Number(r.id), name: r.name, color: r.color, isSystem: r.is_system });
+const SELECT = `select c.id::text as id, c.name, c.color, c.is_system,
+  (select count(*) from transactions t where t.category_id = c.id and t.deleted_at is null)::text as tx,
+  (select count(*) from merchant_rules m where m.category_id = c.id)::text as rules
+  from categories c`;
+const map = (r: Row): Category => ({
+  id: Number(r.id), name: r.name, color: r.color, isSystem: r.is_system, transactionCount: Number(r.tx), ruleCount: Number(r.rules),
+});
 
 export async function listCategories(db: Db): Promise<Category[]> {
-  const r = await db.query<Row>(`select ${COLS} from categories order by is_system desc, lower(name)`);
+  const r = await db.query<Row>(`${SELECT} order by c.is_system desc, lower(c.name)`);
   return r.rows.map(map);
+}
+
+async function getCategory(db: Db, id: number): Promise<Category> {
+  const r = await db.query<Row>(`${SELECT} where c.id = $1`, [id]);
+  if (!r.rows[0]) throw new AppError(404, 'category not found');
+  return map(r.rows[0]);
 }
 
 export async function getUncategorizedId(db: Db): Promise<number> {
@@ -43,8 +60,8 @@ export async function createCategory(db: Db, input: { name?: unknown; color?: un
   const name = checkName(input.name);
   const color = input.color === undefined ? '#64748b' : checkColor(input.color);
   try {
-    const r = await db.query<Row>(`insert into categories (name, color) values ($1, $2) returning ${COLS}`, [name, color]);
-    return map(r.rows[0]!);
+    const r = await db.query<{ id: string }>('insert into categories (name, color) values ($1, $2) returning id::text as id', [name, color]);
+    return getCategory(db, Number(r.rows[0]!.id));
   } catch (err) {
     if (pgCode(err) === '23505') throw new AppError(409, 'a category with that name already exists');
     throw err;
@@ -52,15 +69,13 @@ export async function createCategory(db: Db, input: { name?: unknown; color?: un
 }
 
 export async function updateCategory(db: Db, id: number, input: { name?: unknown; color?: unknown }): Promise<Category> {
-  const cur = await db.query<Row>(`select ${COLS} from categories where id = $1`, [id]);
-  const row = cur.rows[0];
-  if (!row) throw new AppError(404, 'category not found');
-  if (row.is_system && input.name !== undefined) throw new AppError(409, 'the Uncategorized category cannot be renamed');
+  const row = await getCategory(db, id);
+  if (row.isSystem && input.name !== undefined) throw new AppError(409, 'the Uncategorized category cannot be renamed');
   const name = input.name === undefined ? row.name : checkName(input.name);
   const color = input.color === undefined ? row.color : checkColor(input.color);
   try {
-    const r = await db.query<Row>(`update categories set name = $2, color = $3 where id = $1 returning ${COLS}`, [id, name, color]);
-    return map(r.rows[0]!);
+    await db.query('update categories set name = $2, color = $3 where id = $1', [id, name, color]);
+    return getCategory(db, id);
   } catch (err) {
     if (pgCode(err) === '23505') throw new AppError(409, 'a category with that name already exists');
     throw err;
@@ -70,7 +85,7 @@ export async function updateCategory(db: Db, id: number, input: { name?: unknown
 /** Deleting a category reassigns its transactions and merchant rules to Uncategorized, atomically. */
 export async function deleteCategory(db: Db, id: number): Promise<{ reassignedTransactions: number; reassignedRules: number }> {
   return db.transaction(async (tx) => {
-    const cur = await tx.query<Row>(`select ${COLS} from categories where id = $1 for update`, [id]);
+    const cur = await tx.query<{ is_system: boolean }>('select is_system from categories where id = $1 for update', [id]);
     const row = cur.rows[0];
     if (!row) throw new AppError(404, 'category not found');
     if (row.is_system) throw new AppError(409, 'the Uncategorized category cannot be deleted');

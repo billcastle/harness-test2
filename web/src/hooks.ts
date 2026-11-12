@@ -31,3 +31,15 @@ export function useTransactionMutations() {
   const restore = useMutation({ mutationFn: (id: number) => api.restoreTransaction(id), onSuccess: refresh });
   return { create, update, remove, restore };
 }
+
+/** Category changes touch what the lists, the pickers and the dashboard show, so everything that depends on them refreshes. */
+export function useCategoryMutations() {
+  const qc = useQueryClient();
+  const refresh = () =>
+    Promise.all(['categories', 'merchant-rules', 'transactions', 'summary'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+  const create = useMutation({ mutationFn: (i: { name: string; color?: string }) => api.createCategory(i), onSuccess: refresh });
+  const update = useMutation({ mutationFn: (v: { id: number; input: { name?: string; color?: string } }) => api.updateCategory(v.id, v.input), onSuccess: refresh });
+  const remove = useMutation({ mutationFn: (id: number) => api.deleteCategory(id), onSuccess: refresh });
+  const forget = useMutation({ mutationFn: (merchant: string) => api.deleteMerchantRule(merchant), onSuccess: refresh });
+  return { create, update, remove, forget };
+}

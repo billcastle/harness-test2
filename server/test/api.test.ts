@@ -53,6 +53,28 @@ describe('categories', () => {
     expect((await call('DELETE', `/api/categories/${food}`)).status).toBe(404);
   });
 
+  it('lists how many live transactions and remembered merchants each category has (soft-deleted rows do not count)', async () => {
+    const food = await addCat('Food');
+    await addTx({ categoryId: food });
+    await addTx({ categoryId: food });
+    const gone = (await addTx({ categoryId: food })).body;
+    await call('DELETE', `/api/transactions/${gone.id}`);
+    await addTx(); // Uncategorized
+    await upsertMerchantRule(t.db, 'Jollibee', food);
+    await upsertMerchantRule(t.db, 'Mang Inasal', food);
+    const items = (await call('GET', '/api/categories')).body.items;
+    expect(items.find((c: { name: string }) => c.name === 'Food')).toMatchObject({ transactionCount: 2, ruleCount: 2 });
+    expect(items.find((c: { name: string }) => c.name === 'Uncategorized')).toMatchObject({ transactionCount: 1, ruleCount: 0 });
+  });
+
+  it('create and rename return the same shape, counts included', async () => {
+    const created = (await call('POST', '/api/categories', { name: 'Travel', color: '#0ea5e9' })).body;
+    expect(created).toMatchObject({ name: 'Travel', color: '#0ea5e9', isSystem: false, transactionCount: 0, ruleCount: 0 });
+    await addTx({ categoryId: created.id });
+    const renamed = (await call('PATCH', `/api/categories/${created.id}`, { name: 'Trips' })).body;
+    expect(renamed).toMatchObject({ name: 'Trips', transactionCount: 1 });
+  });
+
   it('merchant rule upsert keeps one row per normalized merchant and the latest category wins', async () => {
     const a = await addCat('A');
     const b = await addCat('B');
