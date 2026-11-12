@@ -4,3 +4,9 @@ statements/
 .DS_Store
 node_modules/
 spike/out/
+
+# local dev database (PGlite) and build output
+server/.pglite-data/
+.pglite-data/
+web/dist/
+dist/
