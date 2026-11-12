@@ -2,12 +2,14 @@
 // Server behavior itself is covered by the server's own tests; this only lets the UI tests run fast and deterministically.
 import { vi } from 'vitest';
 import { checkAmount } from '../src/lib/money';
-import type { Category, Kind, Transaction } from '../src/lib/api';
+import type { Category, ImportBatch, Kind, Preview, Transaction } from '../src/lib/api';
 
 export interface Call {
   method: string;
   url: string;
   body: Record<string, unknown> | null;
+  contentType?: string | null;
+  file?: File | null;
 }
 
 export function createFakeApi(seed: { categories?: Category[]; transactions?: Partial<Transaction>[]; signedIn?: boolean } = {}) {
@@ -20,7 +22,7 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
   const txs: (Transaction & { deleted?: boolean })[] = (seed.transactions ?? []).map((t) => ({
     id: nextId++, date: '2026-11-10', amountCentavos: 10000, description: '', categoryId: 1, categoryName: 'Uncategorized', source: 'manual', kind: 'expense' as Kind, importBatchId: null, ...t,
   }));
-  const state = { signedIn: seed.signedIn ?? true, pin: '4821', calls: [] as Call[], failures: [] as { match: RegExp; status: number; error: string; once: boolean; retryAfterSeconds?: number }[], delayMs: 0 };
+  const state = { signedIn: seed.signedIn ?? true, pin: '4821', preview: null as Preview | null, batches: [] as ImportBatch[], calls: [] as Call[], failures: [] as { match: RegExp; status: number; error: string; once: boolean; retryAfterSeconds?: number }[], delayMs: 0 };
 
   const json = (status: number, body: unknown) =>
     new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -29,9 +31,16 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
   async function handle(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = new URL(String(input), 'http://localhost');
     const method = (init?.method ?? 'GET').toUpperCase();
-    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
-    state.calls.push({ method, url: url.pathname + url.search, body });
-    if (state.delayMs) await new Promise((r) => setTimeout(r, state.delayMs));
+    const isFile = typeof File !== 'undefined' && init?.body instanceof File;
+    const body = init?.body && !isFile ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    state.calls.push({ method, url: url.pathname + url.search, body, contentType: headers['content-type'] ?? null, file: isFile ? (init!.body as File) : null });
+    if (state.delayMs) {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, state.delayMs);
+        init?.signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('aborted', 'AbortError')); });
+      });
+    }
     const key = `${method} ${url.pathname}${url.search}`;
     const f = state.failures.find((x) => x.match.test(key));
     if (f) {
@@ -47,6 +56,21 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
     if (p === '/api/session') return json(200, { authenticated: true });
     if (p === '/api/logout') { state.signedIn = false; return json(200, { ok: true }); }
     if (p === '/api/categories') return json(200, { items: categories });
+
+    // ---- statement import
+    if (p === '/api/import/parse' && method === 'POST') return state.preview ? json(200, state.preview) : json(422, { error: 'no preview configured', code: 'unreadable' });
+    if (p === '/api/import/confirm' && method === 'POST') {
+      const rows = (body?.rows as unknown[]) ?? [];
+      return json(201, { batchId: body?.batchId, inserted: rows.length, alreadyImported: false });
+    }
+    if (p === '/api/import/batches' && method === 'GET') return json(200, { items: state.batches });
+    const bm = /^\/api\/import\/batches\/([^/]+)$/.exec(p);
+    if (bm && method === 'DELETE') {
+      const b = state.batches.find((x) => x.id === bm[1]);
+      if (!b) return json(404, { error: 'import not found' });
+      state.batches = state.batches.filter((x) => x !== b);
+      return json(200, { deleted: b.count });
+    }
 
     if (p === '/api/transactions' && method === 'GET') {
       const q = url.searchParams;

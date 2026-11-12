@@ -37,6 +37,12 @@ npm start                                         # migrations run on start; lis
 - Sessions: 30-day sliding expiry (written at most once an hour), httpOnly + SameSite=Strict + `__Host-` cookie, token stored only as a hash.
 - Recovery: `npm run reset-pin` (in Docker: `docker compose exec app npm run reset-pin`) sets a new PIN, clears every lockout and signs out every session.
 
+## Statement import
+
+`POST /api/import/parse` takes the PDF as the raw body (`Content-Type: application/pdf`, optional `?bank=gcash|bpi|maribank`) and returns a preview (nothing is saved). `POST /api/import/confirm` saves a batch idempotently by `batchId`. `GET /api/import/batches` and `DELETE /api/import/batches/:id` list and undo imports. Parsers are in `src/import/parsers`, classification rules in `src/import/rules.json`.
+
+Tests use synthetic statements (`test/fixtures`). `test/real-statements.test.ts` also runs the real parsers on `../statements/*.pdf` when those private files exist, and is skipped otherwise.
+
 ## Known gaps (tracked in the design doc)
 
 - `createPgDb` (the production `pg` driver path) has not been run against a real Postgres yet; the tests use PGlite.

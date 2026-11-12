@@ -26,10 +26,11 @@ export interface TransactionPage {
   pageSize: number;
 }
 export interface TransactionFilter {
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
   q?: string;
   categoryId?: number;
+  batchId?: string;
   page?: number;
 }
 export interface TransactionInput {
@@ -45,6 +46,7 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public retryAfterSeconds?: number,
+    public code?: string,
   ) {
     super(message);
   }
@@ -61,12 +63,64 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return undefined as T;
-  const data = (await res.json().catch(() => null)) as { error?: string; retryAfterSeconds?: number } | null;
+  const data = (await res.json().catch(() => null)) as { error?: string; retryAfterSeconds?: number; code?: string } | null;
   if (!res.ok) {
     if (res.status === 401 && !url.endsWith('/api/login')) window.dispatchEvent(new Event(SESSION_EXPIRED));
-    throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, data?.retryAfterSeconds);
+    throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, data?.retryAfterSeconds, data?.code);
   }
   return data as T;
+}
+
+// ---- statement import
+export type Bank = 'gcash' | 'bpi' | 'maribank';
+export const BANK_LABEL: Record<Bank, string> = { gcash: 'GCash', bpi: 'BPI credit card', maribank: 'Maribank' };
+export interface PreviewRow {
+  index: number;
+  /** Rows with the same key are "similar" (the server strips per-transaction reference numbers). */
+  merchantKey: string;
+  date: string;
+  dateApprox?: boolean;
+  description: string;
+  direction: 'in' | 'out';
+  amountCentavos: number;
+  kind: Kind;
+  reason: string;
+  review?: boolean;
+  occurrenceIndex: number;
+  duplicateOf: number | null;
+  suggestedCategoryId: number;
+  fromRule: boolean;
+  include: boolean;
+}
+export interface ParseIssue {
+  page?: number;
+  reason: string;
+  text?: string;
+  date?: string;
+}
+export interface Preview {
+  batchId: string;
+  bank: Bank;
+  rows: PreviewRow[];
+  errors: ParseIssue[];
+  warnings: ParseIssue[];
+  reconcile: { ok: boolean };
+}
+export interface ConfirmRow {
+  date: string;
+  description: string;
+  amountCentavos: number;
+  kind: Kind;
+  categoryId: number;
+  occurrenceIndex: number;
+  remember: boolean;
+}
+export interface ImportBatch {
+  id: string;
+  source: Bank;
+  importedAt: string;
+  count: number;
+  edited: number;
 }
 
 const qs = (o: Record<string, string | number | undefined>) => {
@@ -81,9 +135,29 @@ export const api = {
   logout: () => request<{ ok: true }>('POST', '/api/logout'),
   categories: () => request<{ items: Category[] }>('GET', '/api/categories').then((r) => r.items),
   transactions: (f: TransactionFilter) =>
-    request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, page: f.page })}`),
+    request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, page: f.page })}`),
   createTransaction: (input: TransactionInput) => request<Transaction>('POST', '/api/transactions', input),
   updateTransaction: (id: number, input: TransactionInput) => request<Transaction>('PATCH', `/api/transactions/${id}`, input),
   deleteTransaction: (id: number) => request<void>('DELETE', `/api/transactions/${id}`),
   restoreTransaction: (id: number) => request<Transaction>('POST', `/api/transactions/${id}/restore`),
+  // The PDF is sent as the raw request body; the server checks the bytes, not the file name.
+  parseStatement: async (file: File, bank: Bank | null, signal?: AbortSignal): Promise<Preview> => {
+    const res = await fetch(`/api/import/parse${bank ? `?bank=${bank}` : ''}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/pdf' },
+      body: file,
+      signal,
+    });
+    const data = (await res.json().catch(() => null)) as (Preview & { error?: string; code?: string }) | null;
+    if (!res.ok) {
+      if (res.status === 401) window.dispatchEvent(new Event(SESSION_EXPIRED));
+      throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, undefined, data?.code);
+    }
+    return data as Preview;
+  },
+  confirmImport: (input: { batchId: string; source: Bank; rows: ConfirmRow[] }) =>
+    request<{ batchId: string; inserted: number; alreadyImported: boolean }>('POST', '/api/import/confirm', input),
+  importBatches: () => request<{ items: ImportBatch[] }>('GET', '/api/import/batches').then((r) => r.items),
+  undoImport: (id: string) => request<{ deleted: number }>('DELETE', `/api/import/batches/${id}`),
 };

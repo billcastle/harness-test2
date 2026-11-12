@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatCentavos, MoneyError, parseAmount } from '../src/lib/money.js';
 import { isValidDate, manilaToday, monthRange, spanDays } from '../src/lib/time.js';
-import { assignOccurrenceIndexes, dedupeHash, normalizeText } from '../src/lib/normalize.js';
+import { assignOccurrenceIndexes, dedupeHash, merchantKey, normalizeText } from '../src/lib/normalize.js';
 
 describe('parseAmount', () => {
   it.each([
@@ -120,5 +120,27 @@ describe('normalization and dedupe hash', () => {
     // a row deleted from the DB then re-imported is simply absent from the existing-hash set, so it shows as new
     const existing = new Set([stmt1[0]]);
     expect(reimport.filter((h) => !existing.has(h))).toEqual([stmt1[1]]);
+  });
+});
+
+describe('merchantKey', () => {
+  it('ignores per-transaction reference numbers so one merchant is one key', () => {
+    const a = merchantKey('Payment to Google, Merchant Transaction Number: G31ism9WWKhgs7dZiKE42aR');
+    const b = merchantKey('Payment  to GOOGLE, Merchant Transaction Number: G3KKebvPpPVufLE3cFfyBTn');
+    expect(a).toBe('payment to google');
+    expect(b).toBe(a);
+  });
+  it('ignores invoice numbers', () => {
+    expect(merchantKey('Received GCash from BPI with account ending in 4495 and invno:20260103BOPIPHMMXXXB000215727574685'))
+      .toBe('received gcash from bpi with account ending in 4495 and');
+  });
+  it('keeps what really distinguishes merchants and recipients', () => {
+    expect(merchantKey('Transfer from 09170000000 to 09181111111')).not.toBe(merchantKey('Transfer from 09170000000 to 09182222222'));
+    expect(merchantKey('Payment to Cafe Uno')).not.toBe(merchantKey('Payment to Cafe Dos'));
+  });
+  it('the dedupe hash still sees the full text, so two real Google payments stay distinct', () => {
+    const base = { source: 'gcash', date: '2026-01-03', amountCentavos: 37900, occurrenceIndex: 0 };
+    expect(dedupeHash({ ...base, description: 'Payment to Google, Merchant Transaction Number: AAA' }))
+      .not.toBe(dedupeHash({ ...base, description: 'Payment to Google, Merchant Transaction Number: BBB' }));
   });
 });

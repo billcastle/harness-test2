@@ -31,6 +31,7 @@ export function TransactionsPage() {
   const q = params.get('q') ?? '';
   const categoryId = params.get('category') ? Number(params.get('category')) : undefined;
   const page = Math.max(1, Number(params.get('page') ?? 1) || 1);
+  const batchId = params.get('batch') ?? undefined; // set after an import: show exactly that import's rows, whatever their dates
 
   const patch = (changes: Record<string, string | null>) =>
     setParams((p) => {
@@ -51,11 +52,12 @@ export function TransactionsPage() {
   }, [qInput]);
 
   const query = useQuery({
-    queryKey: ['transactions', range.from, range.to, q, categoryId ?? null, page],
-    queryFn: () => api.transactions({ from: range.from, to: range.to, q: q || undefined, categoryId, page }),
+    queryKey: ['transactions', batchId ?? null, range.from, range.to, q, categoryId ?? null, page],
+    queryFn: () => api.transactions({ ...(batchId ? { batchId } : { from: range.from, to: range.to }), q: q || undefined, categoryId, page }),
     placeholderData: keepPreviousData,
   });
 
+  const data = query.data;
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [adding, setAdding] = useState(false);
   const [flashId, setFlashId] = useState<number | null>(null);
@@ -87,14 +89,20 @@ export function TransactionsPage() {
     });
   }
 
-  const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const filtered = Boolean(q || categoryId);
   const clearFilters = () => patch({ q: null, category: null, page: null });
 
   return (
     <div className="grid gap-8">
-      <RangeControl range={range} onChange={setRange} />
+      {batchId ? (
+        <Alert className="flex flex-wrap items-center justify-between gap-4 p-5">
+          <span>Showing the transactions from that import{data ? ` (${data.total})` : ''}.</span>
+          <Button type="button" variant="outline" onClick={() => patch({ batch: null, page: null })}>Show everything</Button>
+        </Alert>
+      ) : (
+        <RangeControl range={range} onChange={setRange} />
+      )}
 
       {!mobile && <QuickAddForm categories={categories} onCreated={onCreated} />}
       {mobile && (

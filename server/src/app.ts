@@ -2,6 +2,9 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { registerAuth, type AuthConfig } from './auth/plugin.js';
 import type { Db } from './db.js';
 import { AppError } from './errors.js';
+import { buildPreview, confirmImport, listBatches, parseConfirmBody, undoBatch } from './import/service.js';
+import { MAX_PDF_BYTES, parseInWorker, type RunOptions } from './import/run.js';
+import { BANKS, ImportError, type Bank } from './import/types.js';
 import { isValidDate, manilaToday, monthRange, type Clock } from './lib/time.js';
 import {
   createCategory, deleteCategory, deleteMerchantRule, listCategories, listMerchantRules, updateCategory,
@@ -15,6 +18,8 @@ export interface AppDeps {
   db: Db;
   now?: Clock;
   logger?: boolean | { level: string; stream: NodeJS.WritableStream };
+  /** Worker limits for statement parsing (tests lower the timeout). */
+  importWorker?: RunOptions;
   /** Test aid: called for every route as it is registered. */
   onRoute?: (route: { method: string | string[]; url: string; public: boolean }) => void;
   /** Required unless `insecureNoAuth` is set: the app refuses to be built without authentication. */
@@ -41,14 +46,14 @@ function rangeQuery(q: Record<string, string | undefined>, today: string): { fro
   return { from: q.from, to: q.to };
 }
 
-export function buildApp({ db, now = () => new Date(), logger = false, auth, trustProxy = false, insecureNoAuth = false, onRoute }: AppDeps): FastifyInstance {
+export function buildApp({ db, now = () => new Date(), logger = false, auth, trustProxy = false, insecureNoAuth = false, onRoute, importWorker }: AppDeps): FastifyInstance {
   if (!auth && !insecureNoAuth) throw new Error('buildApp requires an `auth` config (the app is default-deny)');
   const app = Fastify({ logger, bodyLimit: 1_048_576, trustProxy });
   const today = () => manilaToday(now());
   if (onRoute) app.addHook('onRoute', (r) => onRoute({ method: r.method, url: r.url, public: Boolean(r.config?.public) }));
 
   app.setErrorHandler((err: Error & { statusCode?: number; validation?: unknown }, req, reply) => {
-    if (err instanceof AppError) return reply.status(err.status).send({ error: err.message });
+    if (err instanceof AppError) return reply.status(err.status).send({ error: err.message, ...(err.code ? { code: err.code } : {}) });
     if (err.statusCode && err.statusCode < 500) return reply.status(err.statusCode).send({ error: err.message });
     req.log.error({ err: err.message }, 'unhandled error'); // never log request bodies
     return reply.status(500).send({ error: 'internal error' });
@@ -112,6 +117,30 @@ export function buildApp({ db, now = () => new Date(), logger = false, auth, tru
     const { from, to } = rangeQuery(req.query as Record<string, string | undefined>, today());
     return summarize(db, from, to);
   });
+
+  // ---- statement import: upload a PDF, review the preview, confirm
+  // The PDF arrives as the raw request body (Content-Type: application/pdf); the bytes, not the label, are checked.
+  app.addContentTypeParser('application/pdf', { parseAs: 'buffer', bodyLimit: MAX_PDF_BYTES + 1024 }, (_req, body, done) => done(null, body));
+  const IMPORT_STATUS: Record<ImportError['code'], number> = { not_pdf: 400, encrypted: 422, unreadable: 422, unknown_bank: 422, timeout: 422, too_large: 413 };
+  app.post('/api/import/parse', { bodyLimit: MAX_PDF_BYTES + 1024 }, async (req) => {
+    const bank = (req.query as { bank?: string }).bank;
+    if (bank !== undefined && bank !== '' && !(BANKS as string[]).includes(bank)) throw new AppError(400, `bank must be one of ${BANKS.join(', ')}`);
+    const bytes = req.body instanceof Buffer ? req.body : null;
+    if (!bytes) throw new AppError(415, 'send the PDF as the request body with Content-Type: application/pdf');
+    try {
+      const result = await parseInWorker(bytes, (bank || undefined) as Bank | undefined, importWorker);
+      return await buildPreview(db, result);
+    } catch (e) {
+      if (e instanceof ImportError) throw new AppError(IMPORT_STATUS[e.code], e.message, e.code);
+      throw e;
+    }
+  });
+  app.post('/api/import/confirm', async (req, reply) => {
+    const result = await confirmImport(db, parseConfirmBody(req.body));
+    return reply.status(result.alreadyImported ? 200 : 201).send(result);
+  });
+  app.get('/api/import/batches', async () => ({ items: await listBatches(db) }));
+  app.delete('/api/import/batches/:id', async (req) => undoBatch(db, (req.params as { id: string }).id));
 
   return app;
 }

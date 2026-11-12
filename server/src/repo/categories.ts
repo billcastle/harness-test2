@@ -1,6 +1,6 @@
 import type { Db } from '../db.js';
 import { AppError, pgCode } from '../errors.js';
-import { normalizeText } from '../lib/normalize.js';
+import { merchantKey } from '../lib/normalize.js';
 
 export interface Category {
   id: number;
@@ -94,7 +94,7 @@ export async function listMerchantRules(db: Db): Promise<MerchantRule[]> {
 }
 
 export async function upsertMerchantRule(db: Db, description: string, categoryId: number): Promise<MerchantRule> {
-  const merchant = normalizeText(description);
+  const merchant = merchantKey(description);
   if (!merchant) throw new AppError(400, 'description is empty');
   try {
     await db.query(

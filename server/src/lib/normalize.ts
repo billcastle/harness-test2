@@ -6,6 +6,20 @@ export function normalizeText(s: string): string {
   return s.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * The key a remembered category is stored under, and what "similar rows" means. It is the normalized description
+ * without per-transaction reference numbers, which differ on every row of the same merchant
+ * ("Payment to Google, Merchant Transaction Number: G31ism9WW..."). The dedupe hash deliberately keeps the full text.
+ */
+export function merchantKey(s: string): string {
+  return normalizeText(s)
+    .replace(/merchant transaction number:?\s*\S+/g, '')
+    .replace(/invno:\S+/g, '')
+    .replace(/[\s,;:]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export interface HashInput {
   source: string;
   date: string;

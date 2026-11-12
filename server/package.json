@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "fastify": "^5.12.8",
+    "pdfjs-dist": "^6.5.438",
     "pg": "^8.23.1"
   },
   "devDependencies": {

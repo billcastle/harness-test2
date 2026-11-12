@@ -1,0 +1,36 @@
+{
+  "_comment": "Editable classification rules (data, not code). First matching rule per bank and direction wins. kind is one of expense, income, refund, transfer, ignored. review=true asks the user to double-check the guess in the preview.",
+  "gcash": {
+    "in": [
+      { "pattern": "^Refund", "kind": "refund", "reason": "merchant refund" },
+      { "pattern": "^Transfer from System", "kind": "refund", "reason": "system credit (likely reversal; review)", "review": true },
+      { "pattern": "^Received GCash from (BPI|BDO|Maribank)", "kind": "transfer", "reason": "top-up from a bank (review: confirm it is your own account)", "review": true }
+    ],
+    "inDefault": { "kind": "income", "reason": "credit", "review": true },
+    "out": [
+      { "pattern": "^Payment to |Buy Load|Bills Payment", "kind": "expense", "reason": "merchant payment" },
+      { "pattern": "^Transfer from", "kind": "expense", "reason": "transfer to person (review: may be your own account)", "review": true }
+    ],
+    "outDefault": { "kind": "expense", "reason": "default debit", "review": true }
+  },
+  "bpi": {
+    "in": [{ "pattern": ".", "kind": "transfer", "reason": "card payment (money moved from your own bank)" }],
+    "inDefault": { "kind": "transfer", "reason": "card payment (money moved from your own bank)" },
+    "out": [{ "pattern": ".", "kind": "expense", "reason": "card purchase" }],
+    "outDefault": { "kind": "expense", "reason": "card purchase" }
+  },
+  "maribank": {
+    "in": [
+      { "pattern": "^Refund", "kind": "refund", "reason": "refund" },
+      { "pattern": "Bill Castillo", "kind": "transfer", "reason": "own-name transfer" },
+      { "pattern": "Interest", "kind": "income", "reason": "interest" },
+      { "pattern": "^Others", "kind": "income", "reason": "Others incoming (review)", "review": true }
+    ],
+    "inDefault": { "kind": "income", "reason": "credit", "review": true },
+    "out": [
+      { "pattern": "Bill Castillo", "kind": "transfer", "reason": "own-name transfer" },
+      { "pattern": "^Others", "kind": "transfer", "reason": "Others outgoing, likely a time deposit placement (review)", "review": true }
+    ],
+    "outDefault": { "kind": "expense", "reason": "debit" }
+  }
+}
