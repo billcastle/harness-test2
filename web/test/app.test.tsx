@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
 import { manilaToday } from '../src/lib/dates';
@@ -61,5 +61,27 @@ describe('session gate', () => {
 
     await user.type(screen.getByLabelText('PIN, 4 digits'), '4821');
     await waitFor(() => expect(screen.getByText('Lunch')).toBeInTheDocument());
+  });
+});
+
+describe('navigation', () => {
+  it('the date range follows you between Dashboard and Transactions, and is dropped for Import and Categories', async () => {
+    api = createFakeApi({ signedIn: true, transactions: [{ description: 'Lunch', date: '2026-03-02' }] });
+    api.install();
+    const { user } = renderWithProviders(<App />, { route: '/dashboard?from=2026-03-01&to=2026-03-31' });
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
+    await user.click(within(nav).getByRole('link', { name: 'Transactions' }));
+    await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/transactions?from=2026-03-01&to=2026-03-31'));
+    expect(await screen.findByText('Lunch')).toBeInTheDocument();
+    await user.click(within(nav).getByRole('link', { name: 'Categories' }));
+    await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent(/^\/categories$/));
+  });
+
+  it('opens on the Dashboard', async () => {
+    api = createFakeApi({ signedIn: true });
+    api.install();
+    renderWithProviders(<App />, { route: '/' });
+    await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/dashboard'));
   });
 });

@@ -60,3 +60,15 @@ export function rangeFromParams(params: URLSearchParams, today: string): Range {
   if (isValidDate(from) && isValidDate(to) && from <= to) return { from, to };
   return monthRange(today);
 }
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const shortDate = (d: string) => `${MONTHS[Number(d.slice(5, 7)) - 1]!.slice(0, 3)} ${Number(d.slice(8, 10))}, ${d.slice(0, 4)}`;
+
+/** The heading above the total: "November 2026", "2026", "All time", or "Nov 3, 2026 – Nov 9, 2026". */
+export function rangeLabel(r: Range, today: string): string {
+  const monthStart = r.from.slice(8) === '01' && monthRange(r.from).to === r.to;
+  if (monthStart) return `${MONTHS[Number(r.from.slice(5, 7)) - 1]} ${r.from.slice(0, 4)}`;
+  if (r.from.endsWith('-01-01') && r.to === `${r.from.slice(0, 4)}-12-31`) return r.from.slice(0, 4);
+  if (detectPreset(r, today) === 'all-time') return 'All time';
+  return `${shortDate(r.from)} – ${shortDate(r.to)}`;
+}

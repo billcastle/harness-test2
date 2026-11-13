@@ -116,6 +116,24 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
       return json(200, { deleted: b.count });
     }
 
+    if (p === '/api/summary' && method === 'GET') {
+      const from = url.searchParams.get('from') ?? '0000-01-01';
+      const to = url.searchParams.get('to') ?? '9999-12-31';
+      const rows = txs.filter((t) => !t.deleted && (t.kind === 'expense' || t.kind === 'refund') && t.date >= from && t.date <= to);
+      const net = (t: Transaction) => (t.kind === 'refund' ? -t.amountCentavos : t.amountCentavos);
+      const by = new Map<number, number>();
+      const byDay = new Map<string, number>();
+      for (const t of rows) { by.set(t.categoryId, (by.get(t.categoryId) ?? 0) + net(t)); byDay.set(t.date, (byDay.get(t.date) ?? 0) + net(t)); }
+      const days = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+      const monthly = days > 62;
+      const buckets = new Map<string, number>();
+      for (const [d, v] of byDay) { const b = monthly ? d.slice(0, 7) : d; buckets.set(b, (buckets.get(b) ?? 0) + v); }
+      return json(200, {
+        from, to, netCentavos: rows.reduce((s, t) => s + net(t), 0), count: rows.length,
+        byCategory: [...by].map(([id, v]) => ({ categoryId: id, name: catName(id), color: categories.find((c) => c.id === id)?.color ?? '#94a3b8', netCentavos: v })).sort((a, b) => b.netCentavos - a.netCentavos),
+        trend: { granularity: monthly ? 'month' : 'day', points: [...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, v]) => ({ bucket, netCentavos: v })) },
+      });
+    }
     if (p === '/api/transactions' && method === 'GET') {
       const q = url.searchParams;
       let rows = txs.filter((t) => !t.deleted);

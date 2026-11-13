@@ -79,6 +79,16 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   return data as T;
 }
 
+export interface Summary {
+  from: string;
+  to: string;
+  /** Expenses minus refunds. */
+  netCentavos: number;
+  count: number;
+  byCategory: { categoryId: number; name: string; color: string; netCentavos: number }[];
+  trend: { granularity: 'day' | 'month'; points: { bucket: string; netCentavos: number }[] };
+}
+
 // ---- statement import
 export type Bank = 'gcash' | 'bpi' | 'maribank';
 export const BANK_LABEL: Record<Bank, string> = { gcash: 'GCash', bpi: 'BPI credit card', maribank: 'Maribank' };
@@ -147,6 +157,7 @@ export const api = {
   deleteCategory: (id: number) => request<{ reassignedTransactions: number; reassignedRules: number }>('DELETE', `/api/categories/${id}`),
   merchantRules: () => request<{ items: MerchantRule[] }>('GET', '/api/merchant-rules').then((r) => r.items),
   deleteMerchantRule: (merchant: string) => request<void>('DELETE', `/api/merchant-rules?merchant=${encodeURIComponent(merchant)}`),
+  summary: (from: string, to: string) => request<Summary>('GET', `/api/summary?${qs({ from, to })}`),
   transactions: (f: TransactionFilter) =>
     request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, page: f.page })}`),
   createTransaction: (input: TransactionInput) => request<Transaction>('POST', '/api/transactions', input),

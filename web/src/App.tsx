@@ -1,10 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { PinScreen } from './auth/PinScreen';
 import { api, SESSION_EXPIRED } from './lib/api';
 import { CategoriesPage } from './pages/Categories';
+import { DashboardPage } from './pages/Dashboard';
 import { ImportPage } from './pages/Import';
 import { TransactionsPage } from './pages/Transactions';
 
@@ -12,6 +13,9 @@ type Auth = 'checking' | 'signed-in' | 'signed-out';
 
 export function App() {
   const qc = useQueryClient();
+  const [params] = useSearchParams();
+  // the date range is shared by Dashboard and Transactions, so moving between them keeps it
+  const rangeSearch = params.get('from') && params.get('to') ? `?from=${params.get('from')}&to=${params.get('to')}` : '';
   const [auth, setAuth] = useState<Auth>('checking');
 
   useEffect(() => {
@@ -43,19 +47,20 @@ export function App() {
         <Button type="button" variant="outline" onClick={() => void logout()}>Sign out</Button>
       </header>
       <nav aria-label="Main" className="mb-10 flex gap-3">
-        {[{ to: '/transactions', label: 'Transactions' }, { to: '/import', label: 'Import' }, { to: '/categories', label: 'Categories' }].map(({ to, label }) => (
-          <NavLink key={to} to={to} className={({ isActive }) => `inline-flex h-11 items-center rounded-full px-6 text-base font-medium transition-colors ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
+        {[{ to: '/dashboard', label: 'Dashboard', range: true }, { to: '/transactions', label: 'Transactions', range: true }, { to: '/import', label: 'Import', range: false }, { to: '/categories', label: 'Categories', range: false }].map(({ to, label, range }) => (
+          <NavLink key={to} to={{ pathname: to, search: range ? rangeSearch : '' }} className={({ isActive }) => `inline-flex h-11 items-center rounded-full px-6 text-base font-medium transition-colors ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
             {label}
           </NavLink>
         ))}
       </nav>
       <main>
         <Routes>
-          <Route path="/" element={<Navigate to="/transactions" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
-          <Route path="*" element={<Navigate to="/transactions" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
     </div>
