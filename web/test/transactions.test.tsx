@@ -78,6 +78,25 @@ describe('loading and states', () => {
   });
 });
 
+describe('long descriptions', () => {
+  const long = 'Received GCash from A Very Long Bank Name with account ending in 4495 and 1234567890123456789012345678901234567890';
+  const dated = { date: `${manilaToday().slice(0, 7)}-02` };
+
+  it('the description wraps in the table, while the date stays on one line', async () => {
+    setup([{ ...dated, description: long }]);
+    const cell = (await screen.findByText(long)).closest('td') as HTMLElement;
+    expect(cell.className).toContain('whitespace-normal');
+    expect(screen.getByText(long).closest('button')!.className).toContain('break-words');
+    expect(screen.getByRole('button', { name: 'Edit Date' }).className).not.toContain('whitespace-normal');
+  });
+
+  it('the description wraps in a mobile list row', async () => {
+    setMobile(true);
+    setup([{ ...dated, description: long }]);
+    expect((await screen.findByText(long)).className).toContain('break-words');
+  });
+});
+
 describe('quick add', () => {
   it('keyboard-friendly: Amount, then the Category select, then Description, Enter saves, clears Amount and refocuses it', async () => {
     const { user } = setup([]);

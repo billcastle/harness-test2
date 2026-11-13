@@ -52,23 +52,23 @@ describe('preview', () => {
 
   it('suggests Uncategorized by default, and your remembered category when a merchant rule matches', async () => {
     const food = (await req('POST', '/api/categories', { name: 'Food' })).body.id as number;
-    await upsertMerchantRule(t.db, 'Payment to Cafe Uno', food);
+    await upsertMerchantRule(t.db, 'Cafe Uno', food);
     const p = await preview(gcashPages());
-    const cafe = p.rows.filter((x) => x.description === 'Payment to Cafe Uno');
+    const cafe = p.rows.filter((x) => x.description === 'Cafe Uno');
     expect(cafe).toHaveLength(2);
     expect(cafe.every((x) => x.suggestedCategoryId === food && x.fromRule)).toBe(true);
-    const other = p.rows.find((x) => x.description.startsWith('Refund'))!;
+    const other = p.rows.find((x) => x.kind === 'refund')!;
     expect(other.fromRule).toBe(false);
     expect(other.suggestedCategoryId).not.toBe(food);
   });
 
-  it('a remembered category applies to every payment to that merchant even though each has its own reference number', async () => {
+  it('a remembered category applies to a merchant whatever reference number the statement carried (it is dropped from the description)', async () => {
     const shopping = (await req('POST', '/api/categories', { name: 'Software' })).body.id as number;
-    await upsertMerchantRule(t.db, 'Payment to Google, Merchant Transaction Number: OLDREF123', shopping);
+    await upsertMerchantRule(t.db, 'Payment to Google, Merchant Transaction Number: OLDREF123', shopping); // an older, untidied description
+    await upsertMerchantRule(t.db, 'Google', shopping);
     const p = await preview(gcashPages());
-    const google = p.rows.find((x) => x.description.startsWith('Payment to Google'))!;
-    expect(google.description).toContain('G31abcDEFghiJKLmnoPQR'); // a different reference than the one that was remembered
-    expect(google.merchantKey).toBe('payment to google');
+    const google = p.rows.find((x) => x.description === 'Google')!;
+    expect(google.merchantKey).toBe('google');
     expect(google.suggestedCategoryId).toBe(shopping);
     expect(google.fromRule).toBe(true);
   });
@@ -175,11 +175,11 @@ describe('confirm', () => {
     const body = toConfirm(p);
     body.rows.forEach((r) => {
       r.remember = true;
-      if (r.description === 'Payment to Cafe Uno') r.categoryId = food;
+      if (r.description === 'Cafe Uno') r.categoryId = food;
     });
     await req('POST', '/api/import/confirm', body);
     const rules = (await req('GET', '/api/merchant-rules')).body.items;
-    expect(rules).toEqual([{ merchant: 'payment to cafe uno', categoryId: food }]);
+    expect(rules).toEqual([{ merchant: 'cafe uno', categoryId: food }]);
   });
 });
 

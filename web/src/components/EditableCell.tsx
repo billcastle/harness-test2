@@ -80,6 +80,7 @@ export function EditableCell({ label, display, initial, type, options, align = '
           className={cn(
             'min-h-11 w-full rounded-xl px-3 py-2 text-base outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50',
             align === 'right' ? 'text-right' : 'text-left',
+            type === 'text' && 'break-words whitespace-normal', // only free text wraps; dates and amounts stay on one line
           )}
         >
           {display}

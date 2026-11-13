@@ -6,6 +6,36 @@ const DATE_RE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}) ([AP]M)$/;
 
 export const isGcash = (pages: Page[]): boolean => pages[0]?.items.some((i) => i.s === 'GCash Transaction History') ?? false;
 
+/**
+ * GCash descriptions are sentence-like boilerplate around the one useful part ("Payment to Grab Philippines, Merchant
+ * Transaction Number: ..."). This keeps the useful part for display. Classification still reads the original text.
+ * Anything not recognised is returned unchanged, so no information is ever lost to a guess.
+ */
+export function tidyGcashDescription(raw: string, ownNumber?: string): string {
+  const s = raw.replace(/\s+/g, ' ').trim();
+  const clean = (x: string) => x.replace(/,?\s*Merchant Transaction Number:?\s*\S+/i, '').replace(/[\s,;:]+$/, '').trim();
+  let m: RegExpExecArray | null;
+  if ((m = /^(?:Bills )?Payment to (.+)$/i.exec(s))) return clean(m[1]!) || s;
+  if ((m = /^Refund from (.+)$/i.exec(s))) return clean(m[1]!) || s;
+  if ((m = /^Buy Load Transaction for (\S+)$/i.exec(s))) return m[1] === ownNumber ? 'Load' : `Load ${m[1]}`;
+  if ((m = /^Transfer from (\S+) to (\S+)$/i.exec(s))) {
+    // your own number is on every transfer row, so show only the other party
+    if (m[1] === ownNumber) return m[2]!;
+    if (m[2] === ownNumber) return m[1]!;
+    return `${m[1]} → ${m[2]}`;
+  }
+  if ((m = /^Received GCash from (.+?)(?: with account ending in (\d+))?(?: and invno:\S+)?$/i.exec(s))) return m[2] ? `${m[1]} ·${m[2]}` : m[1]!;
+  return s;
+}
+
+/** The account holder's own number: the mobile number that shows up on the most rows. */
+function findOwnNumber(descriptions: string[]): string | undefined {
+  const counts = new Map<string, number>();
+  for (const d of descriptions) for (const n of new Set(d.match(/\b09\d{9}\b/g) ?? [])) counts.set(n, (counts.get(n) ?? 0) + 1);
+  const top = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return top && top[1] >= 3 ? top[0] : undefined;
+}
+
 /** Columns by x position: date ~97, description ~161, reference ~295, debit ~410-416, credit ~452, balance ~495. */
 export function parseGcashPages(pages: Page[]): ParseResult {
   const rows: ParsedRow[] = [];
@@ -67,6 +97,8 @@ export function parseGcashPages(pages: Page[]): ParseResult {
       rows.push({ date: `${m[1]}-${m[2]}-${m[3]}`, description, direction, amountCentavos: amount, reference: ref?.s ?? null, ...classify('gcash', direction, description) });
     }
   }
+  const own = findOwnNumber(rows.map((r) => r.description));
+  for (const r of rows) r.description = tidyGcashDescription(r.description, own);
   const out = rows.filter((r) => r.direction === 'out').reduce((s, r) => s + r.amountCentavos, 0);
   const inn = rows.filter((r) => r.direction === 'in').reduce((s, r) => s + r.amountCentavos, 0);
   const printedOut = footer['Total Debit'] ?? null;

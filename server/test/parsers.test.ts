@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { tidyGcashDescription } from '../src/import/parsers/gcash.js';
 import { parseStatement } from '../src/import/detect.js';
 import { hasPdfMagic, parseInWorker } from '../src/import/run.js';
 import { ImportError } from '../src/import/types.js';
@@ -8,6 +9,40 @@ import { bpiPages, BPI_ROWS, gcashPages, GCASH_ROWS, maribankPages, MARI_ROWS } 
 
 const parse = async (pages: ReturnType<typeof gcashPages>, bank?: 'gcash' | 'bpi' | 'maribank') => parseStatement(makePdf(pages), bank);
 
+describe('GCash description tidying', () => {
+  it.each([
+    ['Payment to Grab Philippines', 'Grab Philippines'],
+    ['Bills Payment to UnionBank of the Philippines', 'UnionBank of the Philippines'],
+    ['Payment to Google, Merchant Transaction Number: G31ism9WWKhgs7dZiKE42aR', 'Google'],
+    ['Refund from MoveIt', 'MoveIt'],
+    ['Received GCash from BDO Unibank, Inc. with account ending in 8701 and invno:20260103BOPIPHMMXXXB000215727574685', 'BDO Unibank, Inc. ·8701'],
+    ['Transfer from System to AbC123xyz', 'System → AbC123xyz'],
+    ['Something GCash has not used before', 'Something GCash has not used before'],
+  ])('%s -> %s', (raw, tidy) => expect(tidyGcashDescription(raw)).toBe(tidy));
+
+  it('transfers and loads show only the other party once your own number is known', () => {
+    const own = '09170000000';
+    expect(tidyGcashDescription(`Transfer from ${own} to 09181111111`, own)).toBe('09181111111');
+    expect(tidyGcashDescription(`Transfer from 09182222222 to ${own}`, own)).toBe('09182222222');
+    expect(tidyGcashDescription(`Buy Load Transaction for ${own}`, own)).toBe('Load');
+    expect(tidyGcashDescription('Buy Load Transaction for 09183333333', own)).toBe('Load 09183333333');
+  });
+
+  it('finds your own number as the one on most rows', async () => {
+    const rows = [
+      ...[1, 2, 3].map((i) => ({ at: `2026-11-0${i} 09:00 AM`, desc: [`Transfer from 09170000000 to 0918111111${i}`], amount: 1000 })),
+      { at: '2026-11-04 09:00 AM', desc: ['Buy Load Transaction for 09170000000'], amount: 500 },
+    ];
+    const r = await parse(gcashPages(rows));
+    expect(r.rows.map((x) => x.description)).toEqual(['09181111111', '09181111112', '09181111113', 'Load']);
+  });
+
+  it('classification still reads the original text, not the tidy one', async () => {
+    const r = await parse(gcashPages());
+    expect(r.rows[2]!.kind).toBe('transfer'); // "BPI / VYBE by BPI ·1234" alone would not say "Received GCash from"
+  });
+});
+
 describe('GCash parser', () => {
   it('reads every row with the right date, description (including multi-line), direction and amount', async () => {
     const r = await parse(gcashPages());
@@ -15,12 +50,12 @@ describe('GCash parser', () => {
     expect(r.errors).toEqual([]);
     expect(r.rows).toHaveLength(GCASH_ROWS.length);
     expect(r.rows.map((x) => [x.date, x.description, x.direction, x.amountCentavos])).toEqual([
-      ['2026-11-02', 'Payment to Cafe Uno', 'out', 18500],
-      ['2026-11-03', 'Payment to Google, Merchant Transaction Number: G31abcDEFghiJKLmnoPQR', 'out', 37900],
-      ['2026-11-04', 'Received GCash from BPI / VYBE by BPI with account ending in 1234 and invno:20261104XXXX', 'in', 500000],
-      ['2026-11-05', 'Transfer from 09170000000 to 09181111111', 'out', 30000],
-      ['2026-11-06', 'Refund from Grab Philippines', 'in', 12000],
-      ['2026-11-07', 'Payment to Cafe Uno', 'out', 18500],
+      ['2026-11-02', 'Cafe Uno', 'out', 18500],
+      ['2026-11-03', 'Google', 'out', 37900],
+      ['2026-11-04', 'BPI / VYBE by BPI ·1234', 'in', 500000],
+      ['2026-11-05', '09170000000 → 09181111111', 'out', 30000],
+      ['2026-11-06', 'Grab Philippines', 'in', 12000],
+      ['2026-11-07', 'Cafe Uno', 'out', 18500],
     ]);
   });
 
