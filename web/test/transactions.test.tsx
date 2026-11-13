@@ -78,6 +78,19 @@ describe('loading and states', () => {
   });
 });
 
+describe('row actions', () => {
+  it('Edit and Delete are icon-only buttons with accessible names', async () => {
+    setup([{ description: 'Lunch', date: `${month}-02` }]);
+    await screen.findByText('Lunch');
+    const edit = within(rowOf('Lunch')).getByRole('button', { name: 'Edit details of Lunch' });
+    const del = within(rowOf('Lunch')).getByRole('button', { name: 'Delete Lunch' });
+    expect(edit.textContent).toBe('');
+    expect(del.textContent).toBe('');
+    expect(edit.querySelector('svg')).not.toBeNull();
+    expect(del.querySelector('svg')).not.toBeNull();
+  });
+});
+
 describe('long descriptions', () => {
   const long = 'Received GCash from A Very Long Bank Name with account ending in 4495 and 1234567890123456789012345678901234567890';
   const dated = { date: `${manilaToday().slice(0, 7)}-02` };
@@ -406,18 +419,12 @@ describe('filters, paging and range in the URL', () => {
 });
 
 describe('phone layout (below 640px)', () => {
-  it('shows list rows instead of a table, adds through a bottom sheet, and edits by tapping a row', async () => {
+  it('shows list rows instead of a table, and edits by tapping a row', async () => {
     setMobile(true);
     const { user } = setup([{ description: 'Lunch', date: `${month}-02`, amountCentavos: 15000 }]);
     expect(await screen.findByText('Lunch')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect(screen.queryByRole('form', { name: 'Add an expense' })).not.toBeInTheDocument(); // hidden until asked for
-
-    await user.click(screen.getByRole('button', { name: '+ Add expense' }));
-    const sheet = screen.getByRole('dialog', { name: 'Add an expense' });
-    await user.type(within(sheet).getByLabelText('Amount'), '45{Enter}');
-    await waitFor(() => expect(api.callsTo('POST', '/api/transactions')).toHaveLength(1));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument()); // sheet closes after saving
+    expect(screen.queryByRole('form', { name: 'Add an expense' })).not.toBeInTheDocument(); // adding is the header button's job on a phone
 
     await user.click(screen.getByText('Lunch'));
     expect(screen.getByRole('dialog', { name: 'Edit transaction' })).toBeInTheDocument();

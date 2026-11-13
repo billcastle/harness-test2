@@ -59,12 +59,10 @@ export function TransactionsPage() {
 
   const data = query.data;
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const [adding, setAdding] = useState(false);
   const [flashId, setFlashId] = useState<number | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   function onCreated(tx: Transaction) {
-    setAdding(false);
     if (tx.date < range.from || tx.date > range.to) {
       toast(`Added ${formatPeso(tx.amountCentavos)} on ${tx.date}, which is outside the date range you are viewing.`, { duration: 6000 });
       return;
@@ -105,16 +103,6 @@ export function TransactionsPage() {
       )}
 
       {!mobile && <QuickAddForm categories={categories} onCreated={onCreated} />}
-      {mobile && (
-        <>
-          <Button type="button" size="lg" className="w-full" onClick={() => setAdding(true)}>+ Add expense</Button>
-          {adding && (
-            <Sheet title="Add an expense" onClose={() => setAdding(false)}>
-              <QuickAddForm categories={categories} onCreated={onCreated} />
-            </Sheet>
-          )}
-        </>
-      )}
 
       <div className="grid gap-5 sm:grid-cols-[1fr_16rem]">
         <div className="grid gap-2">

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { PinScreen } from './auth/PinScreen';
+import { AddExpenseButton } from './components/AddExpenseButton';
 import { api, SESSION_EXPIRED } from './lib/api';
 import { CategoriesPage } from './pages/Categories';
 import { DashboardPage } from './pages/Dashboard';
@@ -39,12 +40,15 @@ export function App() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 pt-8 pb-32">
-      <header className="mb-10 flex items-center justify-between gap-4">
+      <header className="mb-10 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
           <p className="text-muted-foreground">Add, review and edit what you spend.</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => void logout()}>Sign out</Button>
+        <div className="flex items-center gap-3">
+          <AddExpenseButton />
+          <Button type="button" variant="outline" size="lg" onClick={() => void logout()}>Sign out</Button>
+        </div>
       </header>
       <nav aria-label="Main" className="mb-10 flex gap-3">
         {[{ to: '/dashboard', label: 'Dashboard', range: true }, { to: '/transactions', label: 'Transactions', range: true }, { to: '/import', label: 'Import', range: false }, { to: '/categories', label: 'Categories', range: false }].map(({ to, label, range }) => (

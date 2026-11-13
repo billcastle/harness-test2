@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { App } from '../src/App';
 import { manilaToday } from '../src/lib/dates';
 import { createFakeApi, type FakeApi } from './fakeApi';
@@ -14,6 +15,7 @@ beforeEach(() => {
   setMobile(false);
 });
 afterEach(() => {
+  toast.dismiss(); // toasts are global and would otherwise leak into the next test
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -83,5 +85,48 @@ describe('navigation', () => {
     api.install();
     renderWithProviders(<App />, { route: '/' });
     await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/dashboard'));
+  });
+});
+
+describe('Add expense button', () => {
+  it.each([['/dashboard', false], ['/categories', false], ['/import', false], ['/transactions', false], ['/dashboard', true]])(
+    'is in the header on %s (phone: %s) and adds an expense from there',
+    async (route, phone) => {
+      setMobile(phone);
+      api = createFakeApi({ signedIn: true });
+      api.install();
+      const { user } = renderWithProviders(<App />, { route });
+      const header = (await screen.findByRole('banner')) as HTMLElement;
+      await user.click(within(header).getByRole('button', { name: 'Add expense' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Add an expense' });
+      await user.type(within(dialog).getByLabelText('Amount'), '45.50');
+      await user.type(within(dialog).getByLabelText('Description'), 'Coffee{Enter}');
+      await waitFor(() => expect(api.callsTo('POST', '/api/transactions')).toHaveLength(1));
+      expect(api.callsTo('POST', '/api/transactions')[0]!.body).toMatchObject({ amount: '45.50', description: 'Coffee' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add an expense' })).not.toBeInTheDocument());
+      expect(await screen.findByText(/Added ₱45\.50 · Coffee/)).toBeInTheDocument();
+      expect(screen.getByTestId('url')).toHaveTextContent(route); // adding never navigates away
+    },
+  );
+
+  it('a validation error keeps the dialog open so nothing typed is lost', async () => {
+    api = createFakeApi({ signedIn: true });
+    api.install();
+    const { user } = renderWithProviders(<App />, { route: '/dashboard' });
+    await user.click(await screen.findByRole('button', { name: 'Add expense' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add an expense' });
+    await user.type(within(dialog).getByLabelText('Description'), 'Oops{Enter}');
+    expect(await within(dialog).findByText('Enter an amount')).toBeInTheDocument();
+    expect(api.callsTo('POST', '/api/transactions')).toHaveLength(0);
+  });
+
+  it('updates the dashboard total after adding', async () => {
+    api = createFakeApi({ signedIn: true });
+    api.install();
+    const { user } = renderWithProviders(<App />, { route: '/dashboard' });
+    expect(await screen.findByText(/No expenses in/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add expense' }));
+    await user.type(within(await screen.findByRole('dialog')).getByLabelText('Amount'), '100{Enter}');
+    expect(await screen.findByTestId('net-total')).toHaveTextContent('₱100.00');
   });
 });

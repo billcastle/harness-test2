@@ -1,3 +1,5 @@
+import { Delete02Icon, PencilEdit01Icon } from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
@@ -42,7 +44,7 @@ export function TransactionRow({
         <EditableCell label="Amount" type="amount" align="right" initial={centavosToInput(tx.amountCentavos)} display={<AmountText tx={tx} />}
           validate={checkAmount} onSave={(v) => save({ amount: v })} />
       </TableCell>
-      <TableCell className="w-48">
+      <TableCell className="w-36">
         <div className="flex justify-end gap-2">
           {confirming ? (
             <>
@@ -51,8 +53,12 @@ export function TransactionRow({
             </>
           ) : (
             <>
-              <Button type="button" variant="outline" size="sm" onClick={() => onEdit(tx)} aria-label={`Edit details of ${tx.description || 'transaction'}`}>Edit</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(true)} aria-label={`Delete ${tx.description || 'transaction'}`}>Delete…</Button>
+              <Button type="button" variant="outline" size="icon" onClick={() => onEdit(tx)} aria-label={`Edit details of ${tx.description || 'transaction'}`} title="Edit details">
+                <HugeiconsIcon icon={PencilEdit01Icon} strokeWidth={2} aria-hidden />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setConfirming(true)} aria-label={`Delete ${tx.description || 'transaction'}`} title="Delete">
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} aria-hidden />
+              </Button>
             </>
           )}
         </div>
