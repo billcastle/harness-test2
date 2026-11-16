@@ -10,3 +10,6 @@ server/.pglite-data/
 .pglite-data/
 web/dist/
 dist/
+
+# deployment secrets
+.env

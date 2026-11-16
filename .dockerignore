@@ -1,0 +1,11 @@
+.git
+.gstack
+.env
+statements
+spike
+docs
+**/node_modules
+**/.pglite-data
+web/dist
+server/test
+web/test

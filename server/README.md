@@ -47,4 +47,4 @@ Tests use synthetic statements (`test/fixtures`). `test/real-statements.test.ts`
 
 - `createPgDb` (the production `pg` driver path) has not been run against a real Postgres yet; the tests use PGlite.
 - The parallel-guess test runs on PGlite, which serializes connections. The real-concurrency check needs a Postgres server.
-- The PIN screen UI and the "app port is not published" check arrive with the web app and the Docker deploy.
+- The deployment (`../compose.yaml`, `../deploy/`) has only been checked statically (`test/deploy.test.ts`); it has not been run on a Docker host. See `../deploy/README.md`.

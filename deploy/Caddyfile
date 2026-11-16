@@ -1,0 +1,28 @@
+# Caddy gets and renews the HTTPS certificate for {$DOMAIN} by itself (ports 80 and 443 must be reachable).
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	handle /api/* {
+		# statement PDFs are capped at 10 MB here and again in the API
+		request_body {
+			max_size 10MB
+		}
+		reverse_proxy app:3000
+	}
+
+	handle {
+		root * /srv
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		header / Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

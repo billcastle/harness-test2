@@ -1,0 +1,87 @@
+# Production stack: Caddy (HTTPS, static site, /api proxy) -> app (Fastify) -> db (Postgres), plus a backup sidecar.
+# Only Caddy publishes ports. The app and the database are reachable only on the compose networks.
+# Setup and operations: deploy/README.md
+name: expenses
+
+services:
+  caddy:
+    build: { context: ., dockerfile: deploy/caddy.Dockerfile }
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app: { condition: service_healthy }
+    networks: [edge]
+
+  app:
+    build: { context: ., dockerfile: deploy/app.Dockerfile }
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    # no `ports:` on purpose: only Caddy can reach the app, and test/deploy.test.ts checks that
+    expose: ["3000"]
+    environment:
+      DATABASE_URL: postgres://expenses:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/expenses
+      ALLOWED_ORIGIN: https://${DOMAIN:?set DOMAIN in .env}
+      # trust X-Forwarded-For only from the Caddy hop on the edge network
+      TRUST_PROXY: 172.28.0.0/24
+      HOST: 0.0.0.0
+      PORT: "3000"
+      HOME: /tmp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [edge, data]
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: expenses
+      POSTGRES_DB: expenses
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U expenses -d expenses"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [data]
+
+  # Encrypted dumps to your own bucket, once a day. Run one by hand:
+  #   docker compose run --rm --entrypoint /backup.sh backup
+  backup:
+    build: { context: deploy/backup }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://expenses:${POSTGRES_PASSWORD}@db:5432/expenses
+    depends_on:
+      db: { condition: service_healthy }
+    # `data` reaches the database; `edge` gives it a route out to the bucket (the data network has none)
+    networks: [data, edge]
+
+networks:
+  edge:
+    ipam: { config: [{ subnet: 172.28.0.0/24 }] }
+  data:
+    internal: true # the database network has no route to the internet
+
+volumes:
+  dbdata:
+  caddy_data:
+  caddy_config:
