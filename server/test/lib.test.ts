@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatCentavos, MoneyError, parseAmount } from '../src/lib/money.js';
 import { isValidDate, manilaToday, monthRange, spanDays } from '../src/lib/time.js';
+import { parseTrustProxy } from '../src/lib/trust-proxy.js';
 import { assignOccurrenceIndexes, dedupeHash, merchantKey, normalizeText } from '../src/lib/normalize.js';
 
 describe('parseAmount', () => {
@@ -142,5 +143,14 @@ describe('merchantKey', () => {
     const base = { source: 'gcash', date: '2026-01-03', amountCentavos: 37900, occurrenceIndex: 0 };
     expect(dedupeHash({ ...base, description: 'Payment to Google, Merchant Transaction Number: AAA' }))
       .not.toBe(dedupeHash({ ...base, description: 'Payment to Google, Merchant Transaction Number: BBB' }));
+  });
+});
+
+describe('parseTrustProxy', () => {
+  it('unset means the socket address; "true" trusts the platform header; otherwise a list', () => {
+    expect(parseTrustProxy(undefined)).toBe(false);
+    expect(parseTrustProxy('')).toBe(false);
+    expect(parseTrustProxy('TRUE')).toBe(true);
+    expect(parseTrustProxy('10.0.0.1, 172.28.0.0/24')).toEqual(['10.0.0.1', '172.28.0.0/24']);
   });
 });

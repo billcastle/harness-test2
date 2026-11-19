@@ -5,7 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Db } from './db.js';
 
-const defaultDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations');
+// MIGRATIONS_DIR lets the bundled Vercel function find the SQL files it ships next to itself.
+const defaultDir = process.env.MIGRATIONS_DIR ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations');
 
 export async function migrate(db: Db, dir: string = defaultDir): Promise<string[]> {
   await db.query(`create table if not exists schema_migrations (

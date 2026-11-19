@@ -9,8 +9,8 @@ export interface Db {
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>;
 }
 
-export function createPgDb(connectionString: string): Db & { close(): Promise<void> } {
-  const pool = new pg.Pool({ connectionString, max: 5 });
+export function createPgDb(connectionString: string, max = 5): Db & { close(): Promise<void> } {
+  const pool = new pg.Pool({ connectionString, max });
   const wrap = (c: pg.Pool | pg.PoolClient): Db => ({
     async query<T>(sql: string, params: unknown[] = []) {
       const r = await c.query(sql, params);

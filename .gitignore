@@ -13,3 +13,6 @@ dist/
 
 # deployment secrets
 .env
+
+# Vercel build output
+.vercel/

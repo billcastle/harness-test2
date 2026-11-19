@@ -1,0 +1,5 @@
+{
+  "framework": null,
+  "installCommand": "npm ci --prefix web && npm ci --prefix server",
+  "buildCommand": "node deploy/build-vercel.mjs"
+}

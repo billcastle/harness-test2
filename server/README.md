@@ -25,7 +25,7 @@ npm start                                         # migrations run on start; lis
 | `DATABASE_URL` | yes | Postgres connection string |
 | `ALLOWED_ORIGIN` | yes | Exact origin(s) allowed to make changes (CSRF check). Requests without a matching `Origin` header are rejected |
 | `COOKIE_INSECURE_DEV` | no | `1` = plain `session` cookie without `Secure` (local http only) |
-| `TRUST_PROXY` | no | Comma-separated proxy address/CIDR whose `X-Forwarded-For` is trusted (the Caddy hop). Unset = use the socket address |
+| `TRUST_PROXY` | no | `true` (Vercel) or comma-separated proxy address/CIDR whose `X-Forwarded-For` is trusted (the Caddy hop). Unset = use the socket address |
 | `RATE_LIMIT_PER_MINUTE` | no | Requests per IP per minute, default 600 |
 | `HOST`, `PORT` | no | Default `127.0.0.1:3000` |
 
@@ -45,6 +45,5 @@ Tests use synthetic statements (`test/fixtures`). `test/real-statements.test.ts`
 
 ## Known gaps (tracked in the design doc)
 
-- `createPgDb` (the production `pg` driver path) has not been run against a real Postgres yet; the tests use PGlite.
-- The parallel-guess test runs on PGlite, which serializes connections. The real-concurrency check needs a Postgres server.
+- `createPgDb` and the parallel-guess lockout were run once by hand against Postgres 17 (see `../deploy/VERCEL.md`); the automated tests still use PGlite.
 - The deployment (`../compose.yaml`, `../deploy/`) has only been checked statically (`test/deploy.test.ts`); it has not been run on a Docker host. See `../deploy/README.md`.

@@ -1,3 +1,5 @@
+> **No Docker?** Use the free Vercel + Neon path in [VERCEL.md](VERCEL.md). This page is the self-hosted Docker alternative.
+
 # Deploying to a server
 
 One small Linux server (a VPS) with Docker and Docker Compose, and a subdomain you control.

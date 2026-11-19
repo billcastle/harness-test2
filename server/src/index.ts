@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { purgeLockoutData } from './auth/lockout.js';
 import { getPinHash, purgeExpiredSessions } from './auth/sessions.js';
 import { createPgDb } from './db.js';
+import { parseTrustProxy } from './lib/trust-proxy.js';
 import { migrate } from './migrate.js';
 import { purgeDeleted } from './repo/transactions.js';
 
@@ -20,8 +21,7 @@ const allowedOrigins = need('ALLOWED_ORIGIN').split(',').map((s) => s.trim()).fi
 // Production is HTTPS-only. Set COOKIE_INSECURE_DEV=1 only for local http development.
 const secureCookies = process.env.COOKIE_INSECURE_DEV !== '1';
 // Trust X-Forwarded-For only from the reverse proxy you control. Unset = use the socket address.
-const tp = process.env.TRUST_PROXY;
-const trustProxy = tp ? tp.split(',').map((s) => s.trim()) : false;
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
 
 const applied = await migrate(db);
 if (applied.length) console.log('applied migrations:', applied.join(', '));
