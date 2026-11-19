@@ -6,6 +6,7 @@ import { assignOccurrenceIndexes, dedupeHash, merchantKey } from '../lib/normali
 import { isValidDate } from '../lib/time.js';
 import { getUncategorizedId, upsertMerchantRule } from '../repo/categories.js';
 import { KINDS, type Kind } from '../repo/transactions.js';
+import { cancelRefunds, type CancelledPair, type LeftOut } from './cancel.js';
 import { BANKS, type Bank, type ParsedRow, type ParseIssue, type ParseResult } from './types.js';
 
 export const MAX_IMPORT_ROWS = 2000;
@@ -28,6 +29,10 @@ export interface Preview {
   batchId: string;
   bank: Bank;
   rows: PreviewRow[];
+  /** Refunds matched to the purchase they undid, so neither is in `rows`. */
+  cancelled: CancelledPair[];
+  /** Credit card payments, which are not spending and so are not in `rows`. */
+  leftOut: LeftOut[];
   errors: ParseIssue[];
   warnings: ParseIssue[];
   reconcile: ParseResult['reconcile'];
@@ -53,10 +58,12 @@ export async function buildPreview(db: Db, result: ParseResult): Promise<Preview
   }
   const uncategorized = await getUncategorizedId(db);
 
-  const rows: PreviewRow[] = result.rows.map((r, i) => {
+  const { drop, cancelled, leftOut } = cancelRefunds(result.bank, result.rows);
+  const rows: PreviewRow[] = result.rows.flatMap((r, i): PreviewRow[] => {
+    if (drop.has(i)) return [];
     const duplicateOf = existing.get(hashes[i]!) ?? null;
     const rule = rules.get(merchantKey(r.description));
-    return {
+    return [{
       ...r,
       index: i,
       merchantKey: merchantKey(r.description),
@@ -65,9 +72,9 @@ export async function buildPreview(db: Db, result: ParseResult): Promise<Preview
       suggestedCategoryId: rule ?? uncategorized,
       fromRule: rule !== undefined,
       include: (r.kind === 'expense' || r.kind === 'refund') && duplicateOf === null,
-    };
+    }];
   });
-  return { batchId: randomUUID(), bank: result.bank, rows, errors: result.errors, warnings: result.warnings, reconcile: result.reconcile };
+  return { batchId: randomUUID(), bank: result.bank, rows, cancelled, leftOut, errors: result.errors, warnings: result.warnings, reconcile: result.reconcile };
 }
 
 // ---------------------------------------------------------------- confirm

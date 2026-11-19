@@ -195,14 +195,15 @@ describe('duplicates', () => {
     expect(second.rows.find((r) => r.kind === 'transfer')!.duplicateOf).toBeNull(); // it was never saved
   });
 
-  it('two real identical same-day rows stay distinct, and a partial import only flags the saved one', async () => {
+  it('a refund cancels one of two identical same-day purchases; the one left stays distinct and a partial import only flags the saved one', async () => {
     const p = await preview(maribankPages());
+    expect(p.cancelled).toEqual([{ description: 'Shopee Payment', amountCentavos: 44_100, paidOn: '2026-10-11', refundedOn: '2026-10-12' }]);
+    expect(p.rows.some((r) => r.description.startsWith('Refund'))).toBe(false); // the refund is not offered
     const same = p.rows.filter((r) => r.description === 'Shopee Payment' && r.date === '2026-10-11');
-    expect(same.map((r) => r.occurrenceIndex)).toEqual([0, 1]);
-    await req('POST', '/api/import/confirm', toConfirm(p, (r) => r === same[0])); // save only the first of the two
+    expect(same).toHaveLength(1); // two purchases, one refunded
+    await req('POST', '/api/import/confirm', toConfirm(p, (r) => r === same[0]));
     const again = await preview(maribankPages());
-    const sameAgain = again.rows.filter((r) => r.description === 'Shopee Payment' && r.date === '2026-10-11');
-    expect(sameAgain.map((r) => r.duplicateOf !== null)).toEqual([true, false]);
+    expect(again.rows.filter((r) => r.description === 'Shopee Payment' && r.date === '2026-10-11').map((r) => r.duplicateOf !== null)).toEqual([true]);
   });
 
   it('a row you deleted can be imported again; soft-deleted rows do not count as duplicates', async () => {
@@ -313,7 +314,8 @@ describe('totals are not trusted blindly', () => {
 
   it('keeps the whole Maribank statement together, including its page break', async () => {
     const p = await preview(maribankPages());
-    expect(p.rows).toHaveLength(MARI_ROWS.length);
-    expect(p.reconcile.ok).toBe(true);
+    expect(p.rows).toHaveLength(MARI_ROWS.length - 2); // the refund and the purchase it undid are left out
+    expect(p.cancelled).toHaveLength(1);
+    expect(p.reconcile.ok).toBe(true); // the statement still adds up: the parser saw every row
   });
 });
