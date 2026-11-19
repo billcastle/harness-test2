@@ -13,6 +13,7 @@ import {
   createTransaction, listTransactions, parseTransactionBody, restoreTransaction, softDeleteTransaction, updateTransaction,
 } from './repo/transactions.js';
 import { summarize } from './repo/summary.js';
+import { createRecurring, deleteRecurring, listRecurring, parseRecurringBody, updateRecurring } from './repo/recurring.js';
 
 export interface AppDeps {
   db: Db;
@@ -112,10 +113,19 @@ export function buildApp({ db, now = () => new Date(), logger = false, auth, tru
   });
   app.post('/api/transactions/:id/restore', async (req) => restoreTransaction(db, idParam(req)));
 
+  // ---- recurring expenses (subscriptions, utilities)
+  app.get('/api/recurring', async () => ({ items: await listRecurring(db, today()) }));
+  app.post('/api/recurring', async (req, reply) => reply.status(201).send(await createRecurring(db, parseRecurringBody(req.body, true, today()), today())));
+  app.patch('/api/recurring/:id', async (req) => updateRecurring(db, idParam(req), parseRecurringBody(req.body, false, today()), today()));
+  app.delete('/api/recurring/:id', async (req, reply) => {
+    await deleteRecurring(db, idParam(req));
+    return reply.status(204).send();
+  });
+
   // ---- dashboard summary (default range: this month in Asia/Manila)
   app.get('/api/summary', async (req) => {
     const { from, to } = rangeQuery(req.query as Record<string, string | undefined>, today());
-    return summarize(db, from, to);
+    return summarize(db, from, to, today());
   });
 
   // ---- statement import: upload a PDF, review the preview, confirm

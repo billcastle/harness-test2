@@ -228,6 +228,102 @@ describe('summary', () => {
   });
 });
 
+describe('summary insights', () => {
+  const insights = async (q = '') => (await call('GET', `/api/summary${q}`)).body.insights;
+
+  it('is quiet, not wrong, when there is no data', async () => {
+    expect(await insights()).toMatchObject({
+      elapsedDays: 15, averagePerDayCentavos: 0, averageExpenseCentavos: 0, medianExpenseCentavos: 0,
+      largest: null, mostFrequent: null, topBySpend: null, busiestDay: null, priciestWeekday: null, small: null,
+      recurring: [], uncategorized: null, refunds: null, previous: null,
+    });
+  });
+
+  it('finds the biggest expense, the most frequent merchant and the top spend; refunds never count as expenses', async () => {
+    const food = await addCat('Food');
+    await addTx({ amount: '120', date: '2026-11-02', description: 'Jollibee', categoryId: food });
+    await addTx({ amount: '95', date: '2026-11-05', description: 'JOLLIBEE', categoryId: food });
+    await addTx({ amount: '140', date: '2026-11-09', description: 'jollibee ', categoryId: food });
+    const big = (await addTx({ amount: '5000', date: '2026-11-07', description: 'Laptop bag', categoryId: food })).body;
+    await addTx({ amount: '9999', date: '2026-11-08', description: 'Return', kind: 'refund' });
+    await addTx({ amount: '99999', date: '2026-11-08', description: 'Salary', kind: 'income' });
+    const i = await insights();
+    expect(i.largest).toMatchObject({ id: big.id, amountCentavos: 500_000, description: 'Laptop bag', categoryName: 'Food', date: '2026-11-07' });
+    expect(i.mostFrequent).toMatchObject({ count: 3, totalCentavos: 35_500 });
+    expect(i.mostFrequent.name.toLowerCase().trim()).toBe('jollibee');
+    expect(i.topBySpend).toMatchObject({ name: 'Laptop bag', count: 1, totalCentavos: 500_000 });
+    expect(i.refunds).toEqual({ count: 1, totalCentavos: 999_900 });
+  });
+
+  it('daily average uses days elapsed so far, not the whole month; median and mean are over expenses only', async () => {
+    await addTx({ amount: '100', date: '2026-11-02' });
+    await addTx({ amount: '200', date: '2026-11-03' });
+    await addTx({ amount: '900', date: '2026-11-04' });
+    const i = await insights(); // today is Nov 15, so 15 days have passed
+    expect(i.elapsedDays).toBe(15);
+    expect(i.averagePerDayCentavos).toBe(Math.round(120_000 / 15));
+    expect(i.averageExpenseCentavos).toBe(40_000);
+    expect(i.medianExpenseCentavos).toBe(20_000);
+    expect((await insights('?from=2026-10-01&to=2026-10-31')).elapsedDays).toBe(31); // a finished month uses all its days
+    expect((await insights('?from=2026-12-01&to=2026-12-31')).elapsedDays).toBe(0); // a future month has none, and no division by zero
+  });
+
+  it('busiest day sums a whole day; priciest weekday needs two weeks of data', async () => {
+    await addTx({ amount: '300', date: '2026-11-07' }); // Saturday
+    await addTx({ amount: '400', date: '2026-11-07' });
+    await addTx({ amount: '500', date: '2026-11-03' }); // Tuesday
+    const i = await insights();
+    expect(i.busiestDay).toEqual({ date: '2026-11-07', totalCentavos: 70_000, count: 2 });
+    expect(i.priciestWeekday).toEqual({ weekday: 6, totalCentavos: 70_000 });
+    expect((await insights('?from=2026-11-01&to=2026-11-10')).priciestWeekday).toBeNull(); // only 10 days
+  });
+
+  it('small purchases are reported from three upward; uncategorized spend is counted', async () => {
+    const food = await addCat('Food');
+    await addTx({ amount: '50', categoryId: food });
+    await addTx({ amount: '60', categoryId: food });
+    expect((await insights()).small).toBeNull();
+    await addTx({ amount: '199.99' });
+    await addTx({ amount: '200' }); // not small: the threshold is exclusive
+    const i = await insights();
+    expect(i.small).toEqual({ thresholdCentavos: 20_000, count: 3, totalCentavos: 5_000 + 6_000 + 19_999 });
+    expect(i.uncategorized).toEqual({ count: 2, totalCentavos: 19_999 + 20_000 });
+  });
+
+  it('flags the same merchant at the same amount in different months as possibly recurring, and not otherwise', async () => {
+    await addTx({ amount: '549', date: '2026-08-12', description: 'Netflix' });
+    await addTx({ amount: '549', date: '2026-09-12', description: 'Netflix' });
+    await addTx({ amount: '549', date: '2026-10-12', description: 'Netflix' });
+    await addTx({ amount: '300', date: '2026-09-01', description: 'Cafe' });
+    await addTx({ amount: '310', date: '2026-10-01', description: 'Cafe' }); // different amounts: not recurring
+    await addTx({ amount: '80', date: '2026-10-05', description: 'Bus' });
+    await addTx({ amount: '80', date: '2026-10-06', description: 'Bus' }); // same month twice: not recurring
+    expect((await insights('?from=2026-08-01&to=2026-10-31')).recurring).toEqual([{ name: 'Netflix', amountCentavos: 54_900, months: 3 }]);
+  });
+
+  it('a month in progress is compared with the same days of the previous month, a finished month with the whole one', async () => {
+    await addTx({ amount: '100', date: '2026-10-05' });
+    await addTx({ amount: '40', date: '2026-10-15' });
+    await addTx({ amount: '999', date: '2026-10-16' }); // after the 15 days elapsed in November: not part of the comparison
+    await addTx({ amount: '300', date: '2026-11-05' });
+    expect((await insights()).previous).toEqual({ from: '2026-10-01', to: '2026-10-15', netCentavos: 14_000 });
+    expect((await insights('?from=2026-10-01&to=2026-10-31')).previous).toBeNull(); // nothing in September
+    await addTx({ amount: '50', date: '2026-09-30' });
+    expect((await insights('?from=2026-10-01&to=2026-10-31')).previous).toEqual({ from: '2026-09-01', to: '2026-09-30', netCentavos: 5_000 });
+  });
+
+  it('a year is compared with the previous year; any other range with the same number of days just before it', async () => {
+    await addTx({ amount: '70', date: '2025-03-01' });
+    await addTx({ amount: '20', date: '2026-10-20' });
+    await addTx({ amount: '5', date: '2026-10-31' });
+    expect((await insights('?from=2026-01-01&to=2026-12-31')).previous).toEqual({ from: '2025-01-01', to: '2025-11-15', netCentavos: 7_000 });
+    // Oct 20 to Oct 31 is 12 days; the 12 days before are Oct 8 to Oct 19
+    await addTx({ amount: '9', date: '2026-10-10' });
+    expect((await insights('?from=2026-10-20&to=2026-10-31')).previous).toEqual({ from: '2026-10-08', to: '2026-10-19', netCentavos: 900 });
+    expect((await insights('?from=2026-01-01&to=2026-01-31')).previous).toBeNull(); // nothing in December
+  });
+});
+
 describe('Manila "this month" at a month boundary', () => {
   it('23:30 UTC on Oct 31 already shows November in the default range', async () => {
     const late = await testApp(() => new Date('2026-10-31T23:30:00Z'));

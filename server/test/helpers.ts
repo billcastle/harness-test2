@@ -9,7 +9,7 @@ export async function testDb() {
   const db = pgliteDb(pg);
   await migrate(db);
   const reset = async () => {
-    await db.query('truncate transactions, merchant_rules, import_batches restart identity');
+    await db.query('truncate transactions, merchant_rules, import_batches, recurring_expenses restart identity');
     await db.query('delete from categories where not is_system');
   };
   return { pg, db, reset };

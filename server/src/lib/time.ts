@@ -35,3 +35,20 @@ export function spanDays(from: string, to: string): number {
   const b = Date.parse(`${to}T00:00:00Z`);
   return Math.round((b - a) / 86_400_000) + 1;
 }
+
+/** The calendar date `delta` days after `date` (negative goes back). */
+export function addDays(date: string, delta: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** 0 = Sunday … 6 = Saturday, for a calendar date. */
+export function weekdayOf(date: string): number {
+  return new Date(`${date}T00:00:00Z`).getUTCDay();
+}
+
+/** First day of the month `delta` months from the month of `date`. */
+export function addMonths(date: string, delta: number): string {
+  const [y, m] = date.split('-').map(Number) as [number, number];
+  const t = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}

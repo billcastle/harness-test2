@@ -92,6 +92,7 @@ export async function deleteCategory(db: Db, id: number): Promise<{ reassignedTr
     const uncategorized = await getUncategorizedId(tx);
     const t = await tx.query('update transactions set category_id = $2, updated_at = now() where category_id = $1', [id, uncategorized]);
     const m = await tx.query('update merchant_rules set category_id = $2, updated_at = now() where category_id = $1', [id, uncategorized]);
+    await tx.query('update recurring_expenses set category_id = $2, updated_at = now() where category_id = $1', [id, uncategorized]);
     await tx.query('delete from categories where id = $1', [id]);
     return { reassignedTransactions: t.rowCount, reassignedRules: m.rowCount };
   });
