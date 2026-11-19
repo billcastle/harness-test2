@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonths, detectPreset, isValidDate, manilaToday, monthRange, presetRange, rangeFromParams } from '../src/lib/dates';
+import { addMonths, detectPreset, isValidDate, manilaToday, monthOfThisYear, monthOfYear, monthRange, presetRange, rangeFromParams } from '../src/lib/dates';
 import { centavosToInput, checkAmount, formatPeso } from '../src/lib/money';
 
 describe('Manila dates', () => {
@@ -11,7 +11,6 @@ describe('Manila dates', () => {
   it('month math handles year boundaries and leap years', () => {
     expect(monthRange('2028-02-10')).toEqual({ from: '2028-02-01', to: '2028-02-29' });
     expect(addMonths('2026-01-15', -1)).toBe('2025-12-01');
-    expect(presetRange('last-month', '2026-01-15')).toEqual({ from: '2025-12-01', to: '2025-12-31' });
   });
   it('presets: this year and all time', () => {
     expect(presetRange('this-year', '2026-11-15')).toEqual({ from: '2026-01-01', to: '2026-12-31' });
@@ -19,9 +18,22 @@ describe('Manila dates', () => {
   });
   it('detects which preset a range equals, else custom', () => {
     const today = '2026-11-15';
-    expect(detectPreset(presetRange('this-month', today), today)).toBe('this-month');
+    expect(detectPreset(presetRange('current-month', today), today)).toBe('current-month');
+    expect(detectPreset({ from: '2026-03-01', to: '2026-03-31' }, today)).toBe('current-month'); // any month of this year
+    expect(detectPreset({ from: '2026-02-01', to: '2026-02-28' }, today)).toBe('current-month');
+    expect(detectPreset({ from: '2025-03-01', to: '2025-03-31' }, today)).toBe('custom'); // another year is not
+    expect(detectPreset({ from: '2026-03-01', to: '2026-03-30' }, today)).toBe('custom'); // not the whole month
+    expect(detectPreset(presetRange('this-year', today), today)).toBe('this-year');
     expect(detectPreset(presetRange('all-time', today), today)).toBe('all-time');
     expect(detectPreset({ from: '2026-11-02', to: '2026-11-09' }, today)).toBe('custom');
+  });
+  it('month of the current year: detected from a range and turned back into one', () => {
+    const today = '2026-11-15';
+    expect(monthOfYear({ from: '2026-03-01', to: '2026-03-31' }, today)).toBe(3);
+    expect(monthOfYear({ from: '2026-03-01', to: '2026-04-30' }, today)).toBeNull();
+    expect(monthOfYear({ from: '2025-03-01', to: '2025-03-31' }, today)).toBeNull();
+    expect(monthOfThisYear(2, today)).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(monthOfThisYear(12, today)).toEqual({ from: '2026-12-01', to: '2026-12-31' });
   });
   it('reads the range from the URL, falling back to this month when absent or invalid', () => {
     const today = '2026-11-15';

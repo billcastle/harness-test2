@@ -9,7 +9,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // same-origin in dev: the browser talks to Vite, Vite forwards /api to the server (cookies stay SameSite=Strict friendly)
-    proxy: { '/api': 'http://127.0.0.1:3000' },
+    proxy: { '/api': process.env.API_URL ?? 'http://127.0.0.1:3000' },
   },
   test: {
     environment: 'jsdom',

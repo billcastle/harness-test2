@@ -2,7 +2,7 @@
 // Server behavior itself is covered by the server's own tests; this only lets the UI tests run fast and deterministically.
 import { vi } from 'vitest';
 import { checkAmount } from '../src/lib/money';
-import type { Category, ImportBatch, Kind, MerchantRule, Preview, Transaction } from '../src/lib/api';
+import type { Category, ImportBatch, Kind, MerchantRule, Preview, Recurring, Transaction } from '../src/lib/api';
 
 export interface Call {
   method: string;
@@ -12,7 +12,26 @@ export interface Call {
   file?: File | null;
 }
 
-export function createFakeApi(seed: { categories?: Category[]; transactions?: Partial<Transaction>[]; signedIn?: boolean } = {}) {
+// A small stand-in for the server's insights: enough for page tests. The real rules are tested on the server.
+function fakeRecurringSummary(items: Recurring[]) {
+  const lines = items.filter((r) => !r.ended).map((r) => ({ id: r.id, description: r.description, categoryName: r.categoryName, frequency: r.frequency, amountCentavos: r.amountCentavos, costCentavos: r.perMonthCentavos }));
+  return { totalCentavos: lines.reduce((s, l) => s + l.costCentavos, 0), items: lines };
+}
+
+function fakeInsights(rows: Transaction[], net: (t: Transaction) => number, days: number) {
+  const expenses = rows.filter((t) => t.kind === 'expense');
+  const sum = expenses.reduce((s, t) => s + t.amountCentavos, 0);
+  const largest = expenses.reduce<Transaction | null>((b, t) => (!b || t.amountCentavos > b.amountCentavos ? t : b), null);
+  const total = rows.reduce((s, t) => s + net(t), 0);
+  return {
+    elapsedDays: days, averagePerDayCentavos: Math.round(total / days), averageExpenseCentavos: expenses.length ? Math.round(sum / expenses.length) : 0,
+    medianExpenseCentavos: expenses.length ? [...expenses].map((t) => t.amountCentavos).sort((a, b) => a - b)[expenses.length >> 1]! : 0,
+    largest: largest && { id: largest.id, date: largest.date, description: largest.description, amountCentavos: largest.amountCentavos, categoryName: largest.categoryName },
+    mostFrequent: null, topBySpend: null, busiestDay: null, priciestWeekday: null, small: null, recurring: [], uncategorized: null, refunds: null, previous: null,
+  };
+}
+
+export function createFakeApi(seed: { categories?: Category[]; transactions?: Partial<Transaction>[]; recurring?: Partial<Recurring>[]; signedIn?: boolean } = {}) {
   const categories: Category[] = seed.categories ?? [
     { id: 1, name: 'Uncategorized', color: '#94a3b8', isSystem: true, transactionCount: 0, ruleCount: 0 },
     { id: 2, name: 'Food', color: '#16a34a', isSystem: false, transactionCount: 0, ruleCount: 0 },
@@ -22,6 +41,10 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
   const txs: (Transaction & { deleted?: boolean })[] = (seed.transactions ?? []).map((t) => ({
     id: nextId++, date: '2026-11-10', amountCentavos: 10000, description: '', categoryId: 1, categoryName: 'Uncategorized', source: 'manual', kind: 'expense' as Kind, importBatchId: null, ...t,
   }));
+  const recurring: Recurring[] = (seed.recurring ?? []).map((r) => {
+    const base = { id: nextId++, description: 'Netflix', amountCentavos: 54900, frequency: 'monthly' as const, categoryId: 1, categoryName: 'Uncategorized', startDate: '2026-01-01', endDate: null, nextDue: '2026-12-01', ended: false, ...r };
+    return { perMonthCentavos: base.frequency === 'yearly' ? Math.round(base.amountCentavos / 12) : base.amountCentavos, ...base };
+  });
   const state = { signedIn: seed.signedIn ?? true, pin: '4821', preview: null as Preview | null, batches: [] as ImportBatch[], rules: [] as MerchantRule[], calls: [] as Call[], failures: [] as { match: RegExp; status: number; error: string; once: boolean; retryAfterSeconds?: number }[], delayMs: 0 };
 
   const json = (status: number, body: unknown) =>
@@ -129,10 +152,41 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
       const buckets = new Map<string, number>();
       for (const [d, v] of byDay) { const b = monthly ? d.slice(0, 7) : d; buckets.set(b, (buckets.get(b) ?? 0) + v); }
       return json(200, {
-        from, to, netCentavos: rows.reduce((s, t) => s + net(t), 0), count: rows.length,
+        from, to, netCentavos: rows.reduce((s, t) => s + net(t), 0) + fakeRecurringSummary(recurring).totalCentavos, count: rows.length,
         byCategory: [...by].map(([id, v]) => ({ categoryId: id, name: catName(id), color: categories.find((c) => c.id === id)?.color ?? '#94a3b8', netCentavos: v })).sort((a, b) => b.netCentavos - a.netCentavos),
         trend: { granularity: monthly ? 'month' : 'day', points: [...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, v]) => ({ bucket, netCentavos: v })) },
+        recurring: fakeRecurringSummary(recurring),
+        insights: fakeInsights(rows, net, days),
       });
+    }
+    if (p === '/api/recurring' && method === 'GET') return json(200, { items: recurring });
+    if (p === '/api/recurring' && method === 'POST') {
+      const err = checkAmount(String(body?.amount ?? ''));
+      if (err) return json(400, { error: err });
+      const amountCentavos = Math.round(Number(String(body?.amount).replace(/,/g, '')) * 100);
+      const frequency = (body?.frequency as Recurring['frequency']) ?? 'monthly';
+      const r: Recurring = {
+        id: nextId++, description: String(body?.description ?? ''), amountCentavos, frequency, categoryId: Number(body?.categoryId ?? 1), categoryName: catName(Number(body?.categoryId ?? 1)),
+        startDate: String(body?.startDate ?? '2026-11-01'), endDate: (body?.endDate as string | null) ?? null, perMonthCentavos: frequency === 'yearly' ? Math.round(amountCentavos / 12) : amountCentavos,
+        nextDue: '2026-12-01', ended: false,
+      };
+      recurring.push(r);
+      return json(201, r);
+    }
+    const rm = /^\/api\/recurring\/(\d+)$/.exec(p);
+    if (rm) {
+      const r = recurring.find((x) => x.id === Number(rm[1]));
+      if (!r) return json(404, { error: 'recurring expense not found' });
+      if (method === 'DELETE') { recurring.splice(recurring.indexOf(r), 1); return json(204, null); }
+      if (method === 'PATCH') {
+        if (body?.description !== undefined) r.description = String(body.description);
+        if (body?.amount !== undefined) { r.amountCentavos = Math.round(Number(String(body.amount).replace(/,/g, '')) * 100); }
+        if (body?.frequency !== undefined) r.frequency = body.frequency as Recurring['frequency'];
+        if (body?.categoryId !== undefined) { r.categoryId = Number(body.categoryId); r.categoryName = catName(r.categoryId); }
+        if (body?.endDate !== undefined) r.endDate = body.endDate as string | null;
+        r.perMonthCentavos = r.frequency === 'yearly' ? Math.round(r.amountCentavos / 12) : r.amountCentavos;
+        return json(200, r);
+      }
     }
     if (p === '/api/transactions' && method === 'GET') {
       const q = url.searchParams;

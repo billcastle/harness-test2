@@ -55,7 +55,7 @@ export function QuickAddForm({ categories, onCreated, layout = 'row' }: { catego
 
   return (
     <form
-      className={stack ? 'grid gap-5' : 'grid gap-5 rounded-3xl border bg-card p-6 sm:grid-cols-[9rem_13rem_1fr_11rem_auto] sm:items-start'}
+      className={stack ? 'grid gap-5' : 'grid gap-5 rounded-3xl border bg-card p-6 sm:grid-cols-2 lg:grid-cols-[9rem_13rem_1fr_11rem_auto] lg:items-start'}
       onSubmit={submit}
       aria-label="Add an expense"
       noValidate
@@ -89,7 +89,7 @@ export function QuickAddForm({ categories, onCreated, layout = 'row' }: { catego
           </SelectContent>
         </Select>
       </div>
-      <div className="grid gap-2">
+      <div className={stack ? 'grid gap-2' : 'grid gap-2 sm:col-span-2 lg:col-span-1'}>
         <Label htmlFor={`${uid}-desc`}>Description</Label>
         <Input id={`${uid}-desc`} autoComplete="off" maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
@@ -98,10 +98,10 @@ export function QuickAddForm({ categories, onCreated, layout = 'row' }: { catego
         <Input id={`${uid}-date`} type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-invalid={errors.date ? true : undefined} />
         {errors.date && <p className="text-sm text-destructive">{errors.date}</p>}
       </div>
-      <Button type="submit" size="lg" disabled={create.isPending} className={stack ? '' : 'sm:mt-[1.65rem]'}>
+      <Button type="submit" size="lg" disabled={create.isPending} className={stack ? '' : 'sm:self-end lg:mt-[1.65rem]'}>
         {create.isPending ? 'Saving…' : 'Add'}
       </Button>
-      {errors.form && <p className={stack ? 'text-sm text-destructive' : 'text-sm text-destructive sm:col-span-5'} role="alert">{errors.form}</p>}
+      {errors.form && <p className={stack ? 'text-sm text-destructive' : 'text-sm text-destructive sm:col-span-2 lg:col-span-5'} role="alert">{errors.form}</p>}
     </form>
   );
 }

@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { detectPreset, isValidDate, manilaToday, presetRange, type Preset, type Range } from '../lib/dates';
+import { detectPreset, isValidDate, manilaToday, MONTHS, monthOfThisYear, monthOfYear, presetRange, type Preset, type Range } from '../lib/dates';
 
 const LABELS: Record<Preset, string> = {
-  'this-month': 'This month',
-  'last-month': 'Last month',
+  'current-month': 'Current month',
   'this-year': 'This year',
   'all-time': 'All time',
   custom: 'Custom range',
@@ -40,11 +39,11 @@ export function RangeControl({ range, onChange }: { range: Range; onChange: (r: 
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-5">
+    <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap sm:gap-5">
       <div className="grid gap-2">
         <Label htmlFor="range-preset">Date range</Label>
         <Select value={preset} onValueChange={(v) => pick(v as Preset)}>
-          <SelectTrigger id="range-preset" className="w-52">
+          <SelectTrigger id="range-preset" className="w-full sm:w-52">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -54,6 +53,21 @@ export function RangeControl({ range, onChange }: { range: Range; onChange: (r: 
           </SelectContent>
         </Select>
       </div>
+      {preset === 'current-month' && (
+        <div className="grid gap-2">
+          <Label htmlFor="range-month">Month</Label>
+          <Select value={String(monthOfYear(range, today) ?? '')} onValueChange={(v) => onChange(monthOfThisYear(Number(v), today))}>
+            <SelectTrigger id="range-month" className="w-full sm:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MONTHS.map((name, i) => (
+                <SelectItem key={name} value={String(i + 1)}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       {preset === 'custom' && (
         <>
           <div className="grid gap-2">
@@ -64,7 +78,7 @@ export function RangeControl({ range, onChange }: { range: Range; onChange: (r: 
             <Label htmlFor="range-to">To</Label>
             <Input id="range-to" type="date" value={draft.to} onChange={(e) => applyCustom({ ...draft, to: e.target.value })} aria-invalid={error ? true : undefined} />
           </div>
-          {error && <p className="w-full text-sm text-destructive" role="alert">{error}</p>}
+          {error && <p className="col-span-2 w-full text-sm text-destructive" role="alert">{error}</p>}
         </>
       )}
     </div>

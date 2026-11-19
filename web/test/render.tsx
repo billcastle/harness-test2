@@ -16,7 +16,7 @@ export function renderWithProviders(ui: ReactElement, opts: { route?: string } =
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
   const utils = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[opts.route ?? '/transactions']}>
+      <MemoryRouter initialEntries={[opts.route ?? '/']}>
         {ui}
         <Probe />
         <Toaster />
@@ -26,10 +26,11 @@ export function renderWithProviders(ui: ReactElement, opts: { route?: string } =
   return { ...utils, user, client };
 }
 
-/** Pretend the viewport is (or is not) below 640px. */
-export function setMobile(isMobile: boolean) {
+/** Pretend the viewport is (or is not) below 640px (a phone, which is also "compact"), or between 640 and 1023px (a tablet: compact only). */
+export function setMobile(isMobile: boolean, opts: { tablet?: boolean } = {}) {
+  const compact = isMobile || opts.tablet === true;
   window.matchMedia = ((q: string) => ({
-    matches: isMobile && q.includes('max-width: 639px'),
+    matches: (isMobile && q.includes('max-width: 639px')) || (compact && q.includes('max-width: 1023px')),
     media: q, onchange: null, addEventListener: () => undefined, removeEventListener: () => undefined,
     addListener: () => undefined, removeListener: () => undefined, dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;

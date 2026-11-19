@@ -14,14 +14,16 @@ import { RangeControl } from '../components/RangeControl';
 import { Sheet } from '../components/Sheet';
 import { TransactionListItem, TransactionRow } from '../components/TransactionRow';
 import { TransactionSheet } from '../components/TransactionSheet';
-import { useCategories, useIsMobile, useTransactionMutations } from '../hooks';
+import { useCategories, useIsCompact, useIsMobile, useTransactionMutations } from '../hooks';
 import { api, type Transaction } from '../lib/api';
 import { manilaToday, rangeFromParams, type Range } from '../lib/dates';
 import { formatPeso } from '../lib/money';
 
-export function TransactionsPage() {
+/** `showRange={false}` when a parent page already shows the range control (the Overview page). */
+export function TransactionsPage({ showRange = true }: { showRange?: boolean }) {
   const [params, setParams] = useSearchParams();
   const mobile = useIsMobile();
+  const compact = useIsCompact(); // tablets too: the inline-editable table needs about 1000px
   const { remove, restore } = useTransactionMutations();
   const categoriesQuery = useCategories();
   const categories = categoriesQuery.data ?? [];
@@ -99,7 +101,7 @@ export function TransactionsPage() {
           <Button type="button" variant="outline" onClick={() => patch({ batch: null, page: null })}>Show everything</Button>
         </Alert>
       ) : (
-        <RangeControl range={range} onChange={setRange} />
+        showRange && <RangeControl range={range} onChange={setRange} />
       )}
 
       {!mobile && <QuickAddForm categories={categories} onCreated={onCreated} />}
@@ -141,7 +143,7 @@ export function TransactionsPage() {
         </div>
       ) : data ? (
         <div className="grid gap-6">
-          {mobile ? (
+          {compact ? (
             <ul className="grid gap-3">
               {data.items.map((tx) => <TransactionListItem key={tx.id} tx={tx} flash={tx.id === flashId} onEdit={setEditing} />)}
             </ul>

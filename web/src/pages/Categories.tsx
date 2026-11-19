@@ -121,7 +121,7 @@ function CategoryList() {
       ) : (
         <ul className="grid gap-3">
           {categories.map((c) => (
-            <li key={c.id} data-category={c.id} className="grid items-center gap-x-5 gap-y-3 rounded-2xl border bg-card p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
+            <li key={c.id} data-category={c.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 rounded-2xl border bg-card p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:gap-x-5 sm:gap-y-3 sm:p-5">
               <ColorPicker value={c.color} label={`Change color of ${c.name}`} onPick={(hex) => update.mutate({ id: c.id, input: { color: hex } }, { onError: (e) => toast(errorText(e)) })} />
               <div className="min-w-0">
                 {c.isSystem ? (
@@ -130,13 +130,13 @@ function CategoryList() {
                   <EditableCell label="Name" type="text" initial={c.name} display={c.name} validate={nameProblem} onSave={(v) => update.mutateAsync({ id: c.id, input: { name: v.trim() } }).then(() => undefined)} />
                 )}
               </div>
-              <p className="text-sm text-muted-foreground tabular-nums">
+              <p className="order-4 col-span-3 text-sm text-muted-foreground tabular-nums sm:order-none sm:col-span-1">
                 {plural(c.transactionCount, 'transaction')}{c.ruleCount > 0 ? ` · ${plural(c.ruleCount, 'remembered merchant')}` : ''}
               </p>
               {c.isSystem ? (
-                <span className="text-sm text-muted-foreground">Cannot be deleted</span>
+                <span className="order-3 text-right text-sm text-muted-foreground sm:order-none">Cannot be deleted</span>
               ) : (
-                <Button type="button" variant="ghost" onClick={() => setDeleting(c)} aria-label={`Delete ${c.name}`}>Delete…</Button>
+                <Button type="button" variant="ghost" className="order-3 sm:order-none" onClick={() => setDeleting(c)} aria-label={`Delete ${c.name}`}>Delete…</Button>
               )}
             </li>
           ))}
@@ -217,7 +217,7 @@ function RememberedMerchants() {
             ) : (
               <ul className="grid gap-3">
                 {shown.map((r) => (
-                  <li key={r.merchant} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5">
+                  <li key={r.merchant} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 sm:gap-4 sm:p-5">
                     <div className="min-w-0">
                       <p className="break-words">{r.merchant}</p>
                       <p className="text-sm text-muted-foreground">→ {nameOf(r.categoryId)}</p>

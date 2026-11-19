@@ -17,7 +17,7 @@ const row = (over: Partial<PreviewRow> & Pick<PreviewRow, 'index' | 'description
 });
 function makePreview(over: Partial<Preview> = {}): Preview {
   return {
-    batchId: BATCH, bank: 'gcash', reconcile: { ok: true }, errors: [], warnings: [],
+    batchId: BATCH, bank: 'gcash', reconcile: { ok: true }, errors: [], warnings: [], cancelled: [], leftOut: [],
     rows: [
       row({ index: 0, description: 'Payment to Cafe Uno', amountCentavos: 18500 }),
       row({ index: 1, description: 'Payment to Cafe Uno', amountCentavos: 18500, occurrenceIndex: 1, date: '2026-11-07' }),
@@ -99,7 +99,7 @@ describe('upload', () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Bank' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Add transactions manually instead' })).toHaveAttribute('href', '/transactions');
+    expect(screen.getByRole('link', { name: 'Add transactions manually instead' })).toHaveAttribute('href', '/');
   });
 
   it('a network failure shows a connection message, and Try again re-sends the same file', async () => {
@@ -111,6 +111,27 @@ describe('upload', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText(/rows ·/)).toBeInTheDocument();
     expect(api.callsTo('POST', '/api/import/parse').at(-1)!.file?.name).toBe('gcash.pdf');
+  });
+});
+
+describe('left out of the import', () => {
+  it('says which refunded purchases and card payments were left out and why', async () => {
+    const { user } = renderWithProviders(<ImportPage />, { route: '/import' });
+    await upload(user, makePreview({
+      cancelled: [{ description: 'Shopee Payment', amountCentavos: 44100, paidOn: '2026-10-11', refundedOn: '2026-10-12' }],
+      leftOut: [{ description: 'Payment Received', amountCentavos: 300000, date: '2026-10-20', reason: 'credit card payment' }],
+    }));
+    const note = await screen.findByTestId('left-out');
+    expect(note).toHaveTextContent('Shopee Payment · ₱441.00: paid Oct 11, 2026, refunded Oct 12, 2026. They cancel out, so neither is added.');
+    expect(note).toHaveTextContent('Payment Received · ₱3,000.00 on Oct 20, 2026: credit card payment, not an expense.');
+    expect(document.querySelector('[data-row]')?.textContent).not.toContain('Shopee Payment'); // not a row to import
+  });
+
+  it('shows no note when nothing was left out', async () => {
+    const { user } = renderWithProviders(<ImportPage />, { route: '/import' });
+    await upload(user);
+    await screen.findByText(/rows ·/);
+    expect(screen.queryByTestId('left-out')).not.toBeInTheDocument();
   });
 });
 
@@ -126,7 +147,7 @@ describe('preview', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show 2 duplicates and non-expense rows' }));
     expect(within(rowEl(5)).getByText('Possible duplicate')).toBeInTheDocument();
-    expect(within(rowEl(5)).getByRole('link', { name: 'View existing' })).toHaveAttribute('href', '/transactions?from=2026-11-01&to=2026-11-01');
+    expect(within(rowEl(5)).getByRole('link', { name: 'View existing' })).toHaveAttribute('href', '/?from=2026-11-01&to=2026-11-01');
     expect(within(rowEl(4)).getByText('Check')).toBeInTheDocument();
     expect(within(rowEl(4)).getByText('top-up from a bank (review)')).toBeInTheDocument();
     expect(within(rowEl(4)).getByRole('checkbox', { name: /Include/ })).not.toBeChecked();
@@ -238,7 +259,7 @@ describe('confirm', () => {
       ['Payment to Google', 3, 'expense', true, 0],
     ]);
     expect(Object.keys(body.rows[0]!).sort()).toEqual(['amountCentavos', 'categoryId', 'date', 'description', 'kind', 'occurrenceIndex', 'remember']);
-    await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent(`/transactions?batch=${BATCH}`));
+    await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent(`/?batch=${BATCH}`));
     expect(await screen.findByText('Imported 3 transactions.')).toBeInTheDocument();
   });
 
@@ -326,7 +347,7 @@ describe('transactions after an import', () => {
   it('shows exactly the imported rows, ignoring the date range, with a way back to everything', async () => {
     api = createFakeApi({ transactions: [{ description: 'Imported one', date: '2026-01-05' }] });
     api.install();
-    const { user } = renderWithProviders(<TransactionsPage />, { route: `/transactions?batch=${BATCH}` });
+    const { user } = renderWithProviders(<TransactionsPage />, { route: `/?batch=${BATCH}` });
     expect(await screen.findByText('Imported one')).toBeInTheDocument();
     const req = api.callsTo('GET', '/api/transactions')[0]!.url;
     expect(req).toContain(`batchId=${BATCH}`);

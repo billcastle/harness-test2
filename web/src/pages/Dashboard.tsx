@@ -5,15 +5,17 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CategoryBars, CategoryTable } from '../components/CategoryBars';
+import { CategoryPie, CategoryTable } from '../components/CategoryPie';
+import { KeyFindings, PreviousComparison, SummaryStats } from '../components/KeyFindings';
 import { RangeControl } from '../components/RangeControl';
-import { TrendChart, TrendTable } from '../components/TrendChart';
+import { useCategories } from '../hooks';
 import { api } from '../lib/api';
 import { manilaToday, rangeFromParams, rangeLabel, type Range } from '../lib/dates';
 import { formatPeso } from '../lib/money';
-import { fillTrend } from '../lib/trend';
+import { amountLabel } from './Recurring';
 
-export function DashboardPage() {
+/** `showRange={false}` when a parent page already shows the range control (the Overview page). */
+export function DashboardPage({ showRange = true }: { showRange?: boolean }) {
   const [params, setParams] = useSearchParams();
   const today = manilaToday();
   const range = rangeFromParams(params, today);
@@ -22,11 +24,17 @@ export function DashboardPage() {
 
   const query = useQuery({ queryKey: ['summary', range.from, range.to], queryFn: () => api.summary(range.from, range.to), placeholderData: keepPreviousData });
   const data = query.data;
-  const viewTransactions = `/transactions?from=${range.from}&to=${range.to}`;
+  const categories = useCategories().data ?? [];
+  // jump to the transactions list filtered to what has no category yet
+  const reviewUncategorized = () => {
+    const sys = categories.find((c) => c.isSystem);
+    if (sys) setParams((p) => { const n = new URLSearchParams(p); n.set('category', String(sys.id)); n.delete('page'); return n; });
+    document.getElementById('transactions')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   return (
-    <div className="grid gap-10">
-      <RangeControl range={range} onChange={setRange} />
+    <div className="grid gap-8 sm:gap-10">
+      {showRange && <RangeControl range={range} onChange={setRange} />}
 
       {query.isError && !data ? (
         <Alert variant="destructive" className="flex items-center justify-between gap-4 p-5">
@@ -39,49 +47,66 @@ export function DashboardPage() {
           <Skeleton className="h-60 w-full" />
           <Skeleton className="h-60 w-full" />
         </div>
-      ) : data.count === 0 ? (
+      ) : data.count === 0 && data.recurring.items.length === 0 ? (
         <Card>
           <CardContent className="grid justify-items-start gap-6 py-4">
             <div>
               <p className="text-lg font-medium">No expenses in {rangeLabel(range, today)}</p>
-              <p className="text-muted-foreground">Add one by hand or import a statement and the charts will appear here.</p>
+              <p className="text-muted-foreground">Add one with the Add expense button, or import a statement, and the summary and charts will appear here.</p>
             </div>
-            <div className="flex flex-wrap gap-4">
-              <Button asChild size="lg"><Link to="/transactions">Add expense</Link></Button>
-              <Button asChild size="lg" variant="outline"><Link to="/import">Import statement</Link></Button>
-            </div>
+            <Button asChild size="lg"><Link to="/import">Import statement</Link></Button>
           </CardContent>
         </Card>
       ) : (
         <>
           <section aria-label="Total" className="grid gap-2">
             <p className="text-lg text-muted-foreground">{rangeLabel(range, today)}</p>
-            <p className="text-5xl font-semibold tracking-tight tabular-nums" data-testid="net-total">{formatPeso(data.netCentavos)}</p>
+            <p className="text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl" data-testid="net-total">{formatPeso(data.netCentavos)}</p>
             <p className="text-muted-foreground">
               {data.netCentavos < 0 && <span className="mr-2">net of refunds ·</span>}
               {data.count} {data.count === 1 ? 'transaction' : 'transactions'} ·{' '}
-              <Link to={viewTransactions} className="font-medium text-primary underline underline-offset-4">View transactions</Link>
+              <a href="#transactions" className="font-medium text-primary underline underline-offset-4">See them below</a>
             </p>
+            {data.recurring.totalCentavos > 0 && (
+              <p className="text-muted-foreground" data-testid="includes-recurring">Includes {formatPeso(data.recurring.totalCentavos)} of recurring bills and subscriptions</p>
+            )}
+            <PreviousComparison data={data} today={today} />
           </section>
 
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)}>{asTable ? 'Show charts' : 'Show as table'}</Button>
-          </div>
+          {data.count > 0 && <SummaryStats data={data} />}
+
+          {data.count > 0 && <KeyFindings data={data} onReviewUncategorized={reviewUncategorized} />}
 
           <Card>
-            <CardHeader><CardTitle>Spending over time</CardTitle></CardHeader>
-            <CardContent>
-              {(() => {
-                const points = fillTrend(data.trend.points, data.trend.granularity, range, today);
-                return asTable ? <TrendTable points={points} /> : <TrendChart points={points} />;
-              })()}
-            </CardContent>
+            <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle>Spending by category</CardTitle>
+              <Button type="button" variant="outline" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)}>{asTable ? 'Show chart' : 'Show as table'}</Button>
+            </CardHeader>
+            <CardContent>{asTable ? <CategoryTable rows={data.byCategory} /> : <CategoryPie rows={data.byCategory} />}</CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle>By category</CardTitle></CardHeader>
-            <CardContent>{asTable ? <CategoryTable rows={data.byCategory} /> : <CategoryBars rows={data.byCategory} />}</CardContent>
-          </Card>
+          {data.recurring.items.length > 0 && (
+            <Card data-testid="recurring-card">
+              <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle>Recurring in this period</CardTitle>
+                <Link to="/recurring" className="font-medium text-primary underline underline-offset-4">Manage</Link>
+              </CardHeader>
+              <CardContent>
+                <ul className="grid gap-4">
+                  {data.recurring.items.map((r) => (
+                    <li key={r.id} className="flex items-start justify-between gap-4" data-recurring={r.description}>
+                      <span className="grid min-w-0 gap-0.5">
+                        <span className="break-words">{r.description}</span>
+                        <span className="text-sm text-muted-foreground">{r.frequency === 'yearly' ? `${amountLabel(r)}, a twelfth each month` : amountLabel(r)}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums">{formatPeso(r.costCentavos)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 flex justify-between border-t pt-4 font-medium"><span>Total recurring</span><span className="tabular-nums">{formatPeso(data.recurring.totalCentavos)}</span></p>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>

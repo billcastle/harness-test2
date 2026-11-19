@@ -15,6 +15,7 @@ import { KIND_LABEL } from '../components/AmountText';
 import { useCategories } from '../hooks';
 import { api, ApiError, BANK_LABEL, KINDS, type Bank, type ImportBatch, type Kind, type Preview, type PreviewRow } from '../lib/api';
 import { editsFor, resetImport, setImportState, useImportState, type RowEdit } from '../lib/importStore';
+import { shortDate } from '../lib/dates';
 import { formatPeso } from '../lib/money';
 
 let abort: AbortController | null = null;
@@ -70,7 +71,7 @@ function UploadCard() {
         <CardDescription>GCash, BPI credit card and Maribank PDFs are supported. Up to 10 MB. The file is read and then discarded; only the transactions you confirm are kept.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
-        <div className="grid max-w-xs gap-2">
+        <div className="grid max-w-xs min-w-0 gap-2">
           <Label htmlFor="bank-choice">Bank</Label>
           <Select value={s.bankChoice ?? 'auto'} onValueChange={(v) => setImportState({ bankChoice: v === 'auto' ? null : (v as Bank) })} disabled={parsing}>
             <SelectTrigger id="bank-choice" className="w-full"><SelectValue /></SelectTrigger>
@@ -85,7 +86,7 @@ function UploadCard() {
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          className={`grid justify-items-center gap-4 rounded-3xl border border-dashed p-12 text-center transition-colors ${dragging ? 'border-primary bg-primary/5' : ''}`}
+          className={`grid justify-items-center gap-4 rounded-3xl border border-dashed p-6 text-center transition-colors sm:p-12 ${dragging ? 'border-primary bg-primary/5' : ''}`}
         >
           {parsing ? (
             <>
@@ -107,7 +108,7 @@ function UploadCard() {
             <p>{s.error.message}</p>
             <div className="flex flex-wrap gap-3">
               {s.file && <Button type="button" variant="outline" onClick={() => void start(s.file!, s.bankChoice)}>Try again</Button>}
-              <Button type="button" variant="outline" asChild><Link to="/transactions">Add transactions manually instead</Link></Button>
+              <Button type="button" variant="outline" asChild><Link to="/">Add transactions manually instead</Link></Button>
             </div>
           </Alert>
         )}
@@ -152,7 +153,7 @@ function PreviewPanel({ preview }: { preview: Preview }) {
       resetImport();
       await Promise.all([qc.invalidateQueries({ queryKey: ['transactions'] }), qc.invalidateQueries({ queryKey: ['summary'] }), qc.invalidateQueries({ queryKey: ['import-batches'] }), qc.invalidateQueries({ queryKey: ['categories'] })]);
       toast(`Imported ${res.inserted} transaction${res.inserted === 1 ? '' : 's'}.`, { duration: 6000 });
-      navigate(`/transactions?batch=${res.batchId}`);
+      navigate(`/?batch=${res.batchId}`);
     },
   });
 
@@ -167,7 +168,7 @@ function PreviewPanel({ preview }: { preview: Preview }) {
 
   return (
     <div className="grid gap-8">
-      <div className="sticky top-0 z-10 grid gap-4 rounded-3xl border bg-background/95 p-6 shadow-sm backdrop-blur">
+      <div className="sticky top-0 z-10 grid gap-3 rounded-3xl border bg-background/95 p-4 shadow-sm backdrop-blur sm:gap-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-lg font-medium tabular-nums" aria-live="polite">
             {preview.rows.length} rows · {picked.length} will import · {duplicates} duplicates · {preview.errors.length} errors · net {formatPeso(net)}
@@ -212,6 +213,22 @@ function PreviewPanel({ preview }: { preview: Preview }) {
         </Alert>
       )}
 
+      {(preview.cancelled.length > 0 || preview.leftOut.length > 0) && (
+        <Alert className="grid gap-2 p-5" data-testid="left-out">
+          <p className="font-medium">Left out of this import</p>
+          <ul className="grid gap-1 text-sm text-muted-foreground">
+            {preview.cancelled.map((c, i) => (
+              <li key={`c${i}`}>
+                {c.description} · {formatPeso(c.amountCentavos)}: paid {shortDate(c.paidOn)}, refunded {shortDate(c.refundedOn)}. They cancel out, so neither is added.
+              </li>
+            ))}
+            {preview.leftOut.map((l, i) => (
+              <li key={`l${i}`}>{l.description} · {formatPeso(l.amountCentavos)} on {shortDate(l.date)}: {l.reason}, not an expense.</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
       <section className="grid gap-4" aria-label="Rows to import">
         <h3 className="text-lg font-medium">To import ({main.length})</h3>
         <RowHeader />
@@ -242,10 +259,12 @@ function similarCount(rows: PreviewRow[], edits: Record<number, RowEdit>, r: Pre
   return rows.filter((o) => o.index !== r.index && o.merchantKey === r.merchantKey && edits[o.index]?.categoryId !== mine.categoryId).length;
 }
 
-const COLS = 'sm:grid-cols-[2.5rem_6.5rem_minmax(0,1fr)_9rem_12rem_6.5rem_7.5rem]';
+// One row per transaction. Below 1024px it is a compact stack (tick, date and amount on top, then the description, then the pickers);
+// the seven-column table needs about 800px, so tablets get the stack too.
+const COLS = 'lg:grid-cols-[2.5rem_6.5rem_minmax(0,1fr)_9rem_12rem_6.5rem_7.5rem]';
 function RowHeader() {
   return (
-    <div className={`hidden gap-4 px-5 text-sm text-muted-foreground sm:grid ${COLS}`} aria-hidden="true">
+    <div className={`hidden gap-4 px-5 text-sm text-muted-foreground lg:grid ${COLS}`} aria-hidden="true">
       <span /><span>Date</span><span>Description</span><span>Type</span><span>Category</span><span>Remember</span><span className="text-right">Amount</span>
     </div>
   );
@@ -261,16 +280,16 @@ function PreviewRowItem({ row, edit, categories, onChange, similar, onApplySimil
 }) {
   const label = row.description || 'row';
   return (
-    <li className={`grid items-center gap-x-4 gap-y-3 rounded-2xl border bg-card p-5 ${COLS} ${edit.include ? '' : 'opacity-70'}`} data-row={row.index}>
-      <Checkbox checked={edit.include} onCheckedChange={(v) => onChange({ include: v === true })} aria-label={`Include ${label}`} />
-      <span className="tabular-nums">{row.date}{row.dateApprox ? <span className="block text-xs text-muted-foreground">month end</span> : null}</span>
-      <div className="min-w-0">
+    <li className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-3 rounded-2xl border bg-card p-4 sm:p-5 ${COLS} ${edit.include ? '' : 'opacity-70'}`} data-row={row.index}>
+      <Checkbox className="order-1 lg:order-none" checked={edit.include} onCheckedChange={(v) => onChange({ include: v === true })} aria-label={`Include ${label}`} />
+      <span className="order-2 tabular-nums lg:order-none">{row.date}{row.dateApprox ? <span className="block text-xs text-muted-foreground">month end</span> : null}</span>
+      <div className="order-4 col-span-3 min-w-0 lg:order-none lg:col-span-1">
         <p className="break-words">{row.description || 'No description'}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {row.duplicateOf !== null && (
             <>
               <Badge variant="secondary">Possible duplicate</Badge>
-              <Link className="text-sm text-primary underline-offset-4 hover:underline" to={`/transactions?from=${row.date}&to=${row.date}`}>View existing</Link>
+              <Link className="text-sm text-primary underline-offset-4 hover:underline" to={`/?from=${row.date}&to=${row.date}`}>View existing</Link>
             </>
           )}
           {row.review && <Badge variant="outline">Check</Badge>}
@@ -281,19 +300,22 @@ function PreviewRowItem({ row, edit, categories, onChange, similar, onApplySimil
           <Button type="button" variant="link" size="sm" className="mt-1 h-auto p-0" onClick={onApplySimilar}>Apply this category to {similar} similar row{similar === 1 ? '' : 's'}</Button>
         )}
       </div>
-      <Select value={edit.kind} onValueChange={(v) => onChange({ kind: v as Kind })}>
-        <SelectTrigger className="w-full" aria-label={`Type for ${label}`}><SelectValue /></SelectTrigger>
-        <SelectContent>{KINDS.map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>
-      </Select>
-      <Select value={String(edit.categoryId)} onValueChange={(v) => onChange({ categoryId: Number(v) })}>
-        <SelectTrigger className="w-full" aria-label={`Category for ${label}`}><SelectValue /></SelectTrigger>
-        <SelectContent>{categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-      </Select>
-      <label className="flex items-center gap-2 text-sm">
-        <Checkbox checked={edit.remember} onCheckedChange={(v) => onChange({ remember: v === true })} aria-label={`Remember category for ${label}`} />
-        <span className="sm:sr-only">Remember</span>
-      </label>
-      <span className={`text-right tabular-nums sm:text-right ${row.kind === 'refund' ? 'text-primary' : ''}`}>{formatPeso(row.amountCentavos)}</span>
+      {/* below 1024px the two pickers sit side by side under the description; at 1024px+ they become table columns of the row */}
+      <div className="order-5 col-span-3 grid grid-cols-2 items-center gap-3 lg:contents">
+        <Select value={edit.kind} onValueChange={(v) => onChange({ kind: v as Kind })}>
+          <SelectTrigger className="w-full" aria-label={`Type for ${label}`}><SelectValue /></SelectTrigger>
+          <SelectContent>{KINDS.map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={String(edit.categoryId)} onValueChange={(v) => onChange({ categoryId: Number(v) })}>
+          <SelectTrigger className="w-full" aria-label={`Category for ${label}`}><SelectValue /></SelectTrigger>
+          <SelectContent>{categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <label className="col-span-2 flex items-center gap-2 text-sm lg:col-span-1">
+          <Checkbox checked={edit.remember} onCheckedChange={(v) => onChange({ remember: v === true })} aria-label={`Remember category for ${label}`} />
+          <span className="lg:sr-only">Remember this category for this merchant</span>
+        </label>
+      </div>
+      <span className={`order-3 text-right tabular-nums lg:order-none ${row.kind === 'refund' ? 'text-primary' : ''}`}>{formatPeso(row.amountCentavos)}</span>
     </li>
   );
 }
@@ -325,13 +347,13 @@ function History() {
         ) : (
           <ul className="grid gap-3">
             {batches.map((b) => (
-              <li key={b.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5">
+              <li key={b.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 sm:p-5">
                 <div>
                   <p className="font-medium">{BANK_LABEL[b.source]} · {b.count} transaction{b.count === 1 ? '' : 's'}</p>
                   <p className="text-sm text-muted-foreground tabular-nums">{b.importedAt.slice(0, 16)}{b.edited > 0 ? ` · ${b.edited} edited since` : ''}</p>
                 </div>
                 <div className="flex gap-3">
-                  <Button type="button" variant="outline" asChild><Link to={`/transactions?batch=${b.id}`}>View</Link></Button>
+                  <Button type="button" variant="outline" asChild><Link to={`/?batch=${b.id}`}>View</Link></Button>
                   <Button type="button" variant="destructive" onClick={() => setTarget(b)} aria-label={`Undo import of ${BANK_LABEL[b.source]} from ${b.importedAt.slice(0, 16)}`}>Undo…</Button>
                 </div>
               </li>

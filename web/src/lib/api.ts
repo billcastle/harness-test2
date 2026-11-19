@@ -87,6 +87,68 @@ export interface Summary {
   count: number;
   byCategory: { categoryId: number; name: string; color: string; netCentavos: number }[];
   trend: { granularity: 'day' | 'month'; points: { bucket: string; netCentavos: number }[] };
+  /** Subscriptions and bills already counted in netCentavos and byCategory. */
+  recurring: { totalCentavos: number; items: RecurringLine[] };
+  insights: Insights;
+}
+
+export type Frequency = 'monthly' | 'yearly';
+export const FREQUENCY_LABEL: Record<Frequency, string> = { monthly: 'Every month', yearly: 'Every year' };
+export interface RecurringLine {
+  id: number;
+  description: string;
+  categoryName: string;
+  frequency: Frequency;
+  /** The bill as entered (the yearly amount for a yearly bill). */
+  amountCentavos: number;
+  /** What it adds to the period being viewed. */
+  costCentavos: number;
+}
+export interface Recurring {
+  id: number;
+  description: string;
+  amountCentavos: number;
+  frequency: Frequency;
+  categoryId: number;
+  categoryName: string;
+  startDate: string;
+  endDate: string | null;
+  /** The amount, or a twelfth of it for a yearly bill. */
+  perMonthCentavos: number;
+  nextDue: string | null;
+  ended: boolean;
+}
+export interface RecurringInput {
+  description?: string;
+  amount?: string;
+  frequency?: Frequency;
+  categoryId?: number;
+  startDate?: string;
+  endDate?: string | null;
+}
+
+export interface MerchantStat {
+  name: string;
+  count: number;
+  totalCentavos: number;
+}
+/** Facts about the period, computed on the server. Each part is null (or empty) when there is not enough data. */
+export interface Insights {
+  elapsedDays: number;
+  averagePerDayCentavos: number;
+  averageExpenseCentavos: number;
+  medianExpenseCentavos: number;
+  largest: { id: number; date: string; description: string; amountCentavos: number; categoryName: string } | null;
+  mostFrequent: MerchantStat | null;
+  topBySpend: MerchantStat | null;
+  busiestDay: { date: string; totalCentavos: number; count: number } | null;
+  /** 0 = Sunday. */
+  priciestWeekday: { weekday: number; totalCentavos: number } | null;
+  small: { thresholdCentavos: number; count: number; totalCentavos: number } | null;
+  recurring: { name: string; amountCentavos: number; months: number }[];
+  uncategorized: { count: number; totalCentavos: number } | null;
+  refunds: { count: number; totalCentavos: number } | null;
+  previous: { from: string; to: string; netCentavos: number } | null;
 }
 
 // ---- statement import
@@ -116,10 +178,26 @@ export interface ParseIssue {
   text?: string;
   date?: string;
 }
+/** A purchase and the refund that undid it: together they cost nothing, so neither is offered for import. */
+export interface CancelledPair {
+  description: string;
+  amountCentavos: number;
+  paidOn: string;
+  refundedOn: string;
+}
+/** A row that is not spending (a credit card payment), so it is not offered for import. */
+export interface LeftOut {
+  description: string;
+  date: string;
+  amountCentavos: number;
+  reason: string;
+}
 export interface Preview {
   batchId: string;
   bank: Bank;
   rows: PreviewRow[];
+  cancelled: CancelledPair[];
+  leftOut: LeftOut[];
   errors: ParseIssue[];
   warnings: ParseIssue[];
   reconcile: { ok: boolean };
@@ -157,6 +235,10 @@ export const api = {
   deleteCategory: (id: number) => request<{ reassignedTransactions: number; reassignedRules: number }>('DELETE', `/api/categories/${id}`),
   merchantRules: () => request<{ items: MerchantRule[] }>('GET', '/api/merchant-rules').then((r) => r.items),
   deleteMerchantRule: (merchant: string) => request<void>('DELETE', `/api/merchant-rules?merchant=${encodeURIComponent(merchant)}`),
+  recurring: () => request<{ items: Recurring[] }>('GET', '/api/recurring').then((r) => r.items),
+  createRecurring: (input: RecurringInput) => request<Recurring>('POST', '/api/recurring', input),
+  updateRecurring: (id: number, input: RecurringInput) => request<Recurring>('PATCH', `/api/recurring/${id}`, input),
+  deleteRecurring: (id: number) => request<void>('DELETE', `/api/recurring/${id}`),
   summary: (from: string, to: string) => request<Summary>('GET', `/api/summary?${qs({ from, to })}`),
   transactions: (f: TransactionFilter) =>
     request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, page: f.page })}`),

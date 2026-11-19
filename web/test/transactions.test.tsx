@@ -407,13 +407,13 @@ describe('filters, paging and range in the URL', () => {
   });
 
   it('a custom range is validated and written to the URL; the same URL reopens with that range', async () => {
-    const { user } = setup([{ description: 'Old', date: '2026-01-15' }], '/transactions?from=2026-01-01&to=2026-01-31');
+    const { user } = setup([{ description: 'Old', date: '2026-01-15' }], '/transactions?from=2026-01-05&to=2026-01-31');
     expect(await screen.findByText('Old')).toBeInTheDocument(); // a shared link restores the view
     expect(screen.getByRole('combobox', { name: 'Date range' })).toHaveTextContent('Custom range');
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-02-10' } });
     expect(await screen.findByText('Start date must not be after the end date')).toBeInTheDocument();
-    await choose(user, screen.getByRole('combobox', { name: 'Date range' }), 'Last month');
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Date range' })).toHaveTextContent('Last month'));
+    await choose(user, screen.getByRole('combobox', { name: 'Date range' }), 'Current month');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Date range' })).toHaveTextContent('Current month'));
     expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
   });
 });
@@ -428,5 +428,23 @@ describe('phone layout (below 640px)', () => {
 
     await user.click(screen.getByText('Lunch'));
     expect(screen.getByRole('dialog', { name: 'Edit transaction' })).toBeInTheDocument();
+  });
+});
+
+describe('tablet layout (640 to 1023px)', () => {
+  it('keeps the inline add form but shows tappable list rows instead of a table that would not fit', async () => {
+    setMobile(false, { tablet: true });
+    const { user } = setup([{ description: 'Lunch', date: `${month}-02`, amountCentavos: 15000 }]);
+    expect(await screen.findByText('Lunch')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Add an expense' })).toBeInTheDocument();
+    await user.click(screen.getByText('Lunch'));
+    expect(screen.getByRole('dialog', { name: 'Edit transaction' })).toBeInTheDocument();
+  });
+
+  it('a wide desktop still gets the table', async () => {
+    setMobile(false);
+    setup([{ description: 'Lunch', date: `${month}-02` }]);
+    expect(await screen.findByRole('table')).toBeInTheDocument();
   });
 });
