@@ -2,6 +2,7 @@ import { Delete02Icon, PencilEdit01Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useTransactionMutations } from '../hooks';
@@ -13,11 +14,13 @@ import { EditableCell } from './EditableCell';
 
 /** Desktop row (640px and up): every cell edits in place. */
 export function TransactionRow({
-  tx, categories, flash, onEdit, onDelete,
+  tx, categories, flash, selected, onSelect, onEdit, onDelete,
 }: {
   tx: Transaction;
   categories: Category[];
   flash: boolean;
+  selected: boolean;
+  onSelect: (tx: Transaction, on: boolean) => void;
   onEdit: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
 }) {
@@ -26,7 +29,10 @@ export function TransactionRow({
   const save = (input: Parameters<typeof update.mutateAsync>[0]['input']) => update.mutateAsync({ id: tx.id, input }).then(() => undefined);
 
   return (
-    <TableRow className={cn('align-top', flash && 'flash bg-primary/10')} data-tx-id={tx.id}>
+    <TableRow className={cn('align-top', flash && 'flash bg-primary/10')} data-tx-id={tx.id} data-state={selected ? 'selected' : undefined}>
+      <TableCell className="w-10">
+        <Checkbox checked={selected} onCheckedChange={(v) => onSelect(tx, v === true)} aria-label={`Select ${tx.description || 'transaction'} on ${tx.date}`} />
+      </TableCell>
       <TableCell className="w-44">
         <EditableCell label="Date" type="date" initial={tx.date} display={<span className="tabular-nums">{tx.date}</span>}
           validate={(v) => (isValidDate(v) ? null : 'Enter a real date')} onSave={(v) => save({ date: v })} />

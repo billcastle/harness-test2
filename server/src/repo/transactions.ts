@@ -140,6 +140,17 @@ export async function restoreTransaction(db: Db, id: number): Promise<Transactio
   return getTransaction(db, id);
 }
 
+/** Soft-deletes many at once; returns how many were live. Unknown or already deleted ids are skipped. */
+export async function softDeleteMany(db: Db, ids: number[]): Promise<number> {
+  const r = await db.query('update transactions set deleted_at = now(), updated_at = now() where id = any($1::bigint[]) and deleted_at is null', [ids]);
+  return r.rowCount;
+}
+
+export async function restoreMany(db: Db, ids: number[]): Promise<number> {
+  const r = await db.query('update transactions set deleted_at = null, updated_at = now() where id = any($1::bigint[]) and deleted_at is not null', [ids]);
+  return r.rowCount;
+}
+
 /** Permanently removes rows soft-deleted before `cutoff`. */
 export async function purgeDeleted(db: Db, cutoff: Date): Promise<number> {
   const r = await db.query('delete from transactions where deleted_at is not null and deleted_at < $1', [cutoff.toISOString()]);
@@ -149,6 +160,8 @@ export async function purgeDeleted(db: Db, cutoff: Date): Promise<number> {
 export interface ListFilter {
   from?: string;
   to?: string;
+  /** One exact day; wins over from and to. */
+  date?: string;
   categoryId?: number;
   q?: string;
   batchId?: string;
@@ -158,6 +171,20 @@ export interface ListFilter {
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+/**
+ * What a search box entry can mean besides description text: an amount. "250" matches 250.00 to 250.99,
+ * "250.5" or "1,250.50" match that exact amount (a leading peso sign is ignored).
+ */
+export function searchTerms(q: string): { amount?: { min: number; max: number } } {
+  const out: ReturnType<typeof searchTerms> = {};
+  const m = /^(\d{1,12})(?:\.(\d{1,2}))?$/.exec(q.trim().replace(/^₱\s*/, '').replace(/,/g, ''));
+  if (m) {
+    if (m[2] === undefined) out.amount = { min: Number(m[1]) * 100, max: Number(m[1]) * 100 + 99 };
+    else { const c = Number(m[1]) * 100 + Number(m[2].padEnd(2, '0')); out.amount = { min: c, max: c }; }
+  }
+  return out;
+}
+
 export async function listTransactions(db: Db, f: ListFilter): Promise<{ items: Transaction[]; total: number; page: number; pageSize: number }> {
   const where: string[] = ['t.deleted_at is null'];
   const params: unknown[] = [];
@@ -165,10 +192,23 @@ export async function listTransactions(db: Db, f: ListFilter): Promise<{ items: 
     params.push(v);
     where.push(sql.replace('?', `$${params.length}`));
   };
-  if (f.from) add('t.date >= ?', f.from);
-  if (f.to) add('t.date <= ?', f.to);
+  if (f.date) add('t.date = ?', f.date);
+  else {
+    if (f.from) add('t.date >= ?', f.from);
+    if (f.to) add('t.date <= ?', f.to);
+  }
   if (f.categoryId) add('t.category_id = ?', f.categoryId);
-  if (f.q) add(`t.description ilike ? escape '\\'`, `%${escapeLike(f.q)}%`);
+  if (f.q) {
+    const terms = searchTerms(f.q);
+    const any: string[] = [];
+    params.push(`%${escapeLike(f.q)}%`);
+    any.push(`t.description ilike $${params.length} escape '\\'`);
+    if (terms.amount) {
+      params.push(terms.amount.min, terms.amount.max);
+      any.push(`t.amount_centavos between $${params.length - 1} and $${params.length}`);
+    }
+    where.push(`(${any.join(' or ')})`);
+  }
   if (f.batchId) add('t.import_batch_id = ?', f.batchId);
   const clause = where.join(' and ');
   const total = await db.query<{ n: string }>(`select count(*)::text as n from transactions t where ${clause}`, params);

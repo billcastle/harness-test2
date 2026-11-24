@@ -150,3 +150,17 @@ describe('Add expense button', () => {
     expect(await screen.findByTestId('net-total')).toHaveTextContent('₱100.00');
   });
 });
+
+describe('date range across tabs', () => {
+  it('keeps the chosen range when you switch to another tab and back', async () => {
+    api = createFakeApi({ signedIn: true, transactions: [{ description: 'Lunch', date: '2026-03-02' }] });
+    api.install();
+    const { user } = renderWithProviders(<App />, { route: '/?from=2026-03-01&to=2026-03-31' });
+    expect((await screen.findAllByText('Lunch')).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('link', { name: 'Recurring' }));
+    await screen.findByText('Recurring expenses');
+    await user.click(screen.getByRole('link', { name: 'Overview' }));
+    expect(screen.getByTestId('url').textContent).toContain('from=2026-03-01&to=2026-03-31');
+    expect((await screen.findAllByText('Lunch')).length).toBeGreaterThan(0);
+  });
+});

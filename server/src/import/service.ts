@@ -4,6 +4,7 @@ import { AppError, pgCode } from '../errors.js';
 import { MAX_CENTAVOS } from '../lib/money.js';
 import { assignOccurrenceIndexes, dedupeHash, merchantKey } from '../lib/normalize.js';
 import { isValidDate } from '../lib/time.js';
+import { guessCategoryId } from './guess.js';
 import { getUncategorizedId, upsertMerchantRule } from '../repo/categories.js';
 import { KINDS, type Kind } from '../repo/transactions.js';
 import { cancelRefunds, type CancelledPair, type LeftOut } from './cancel.js';
@@ -22,6 +23,8 @@ export interface PreviewRow extends ParsedRow {
   suggestedCategoryId: number;
   /** A merchant rule matched, so the suggestion is one you chose before. */
   fromRule: boolean;
+  /** The category is a keyword guess from the merchant name, not something you chose before. */
+  guessed: boolean;
   /** Whether the row starts ticked: expenses and refunds that are not duplicates. */
   include: boolean;
 }
@@ -57,20 +60,24 @@ export async function buildPreview(db: Db, result: ParseResult): Promise<Preview
     for (const row of r.rows) rules.set(row.m, Number(row.c));
   }
   const uncategorized = await getUncategorizedId(db);
+  const categories = (await db.query<{ id: string; name: string }>('select id::text as id, name from categories where not is_system')).rows.map((c) => ({ id: Number(c.id), name: c.name }));
 
   const { drop, cancelled, leftOut } = cancelRefunds(result.bank, result.rows);
   const rows: PreviewRow[] = result.rows.flatMap((r, i): PreviewRow[] => {
     if (drop.has(i)) return [];
     const duplicateOf = existing.get(hashes[i]!) ?? null;
     const rule = rules.get(merchantKey(r.description));
+    // a remembered merchant wins; otherwise a keyword guess among your categories; otherwise Uncategorized
+    const guess = rule === undefined ? guessCategoryId(r.description, categories) : null;
     return [{
       ...r,
       index: i,
       merchantKey: merchantKey(r.description),
       occurrenceIndex: indexed[i]!.occurrenceIndex,
       duplicateOf,
-      suggestedCategoryId: rule ?? uncategorized,
+      suggestedCategoryId: rule ?? guess ?? uncategorized,
       fromRule: rule !== undefined,
+      guessed: guess !== null,
       include: (r.kind === 'expense' || r.kind === 'refund') && duplicateOf === null,
     }];
   });

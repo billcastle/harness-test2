@@ -68,7 +68,7 @@ export function QuickAddForm({ categories, onCreated, layout = 'row' }: { catego
           className="tabular-nums"
           inputMode="decimal"
           autoComplete="off"
-          autoFocus
+          autoFocus={stack}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           aria-invalid={errors.amount ? true : undefined}

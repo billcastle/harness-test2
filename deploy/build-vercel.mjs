@@ -42,6 +42,8 @@ fs.writeFileSync(
   JSON.stringify(
     {
       version: 3,
+      // once a month, 00:00 UTC on the 1st (8am in Manila); Vercel sends `Authorization: Bearer $CRON_SECRET`
+      crons: [{ path: '/api/cron/monthly', schedule: '0 0 1 * *' }],
       routes: [
         { src: '/api/(.*)', dest: '/api' },
         { handle: 'filesystem' },

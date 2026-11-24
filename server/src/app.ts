@@ -10,7 +10,7 @@ import {
   createCategory, deleteCategory, deleteMerchantRule, listCategories, listMerchantRules, updateCategory,
 } from './repo/categories.js';
 import {
-  createTransaction, listTransactions, parseTransactionBody, restoreTransaction, softDeleteTransaction, updateTransaction,
+  createTransaction, listTransactions, parseTransactionBody, restoreMany, restoreTransaction, softDeleteMany, softDeleteTransaction, updateTransaction,
 } from './repo/transactions.js';
 import { summarize } from './repo/summary.js';
 import { createRecurring, deleteRecurring, listRecurring, parseRecurringBody, updateRecurring } from './repo/recurring.js';
@@ -92,6 +92,10 @@ export function buildApp({ db, now = () => new Date(), logger = false, auth, tru
       if (!isValidDate(q.to)) throw new AppError(400, 'to must be a real date');
       filter.to = q.to;
     }
+    if (q.date !== undefined) {
+      if (!isValidDate(q.date)) throw new AppError(400, 'date must be a real date');
+      filter.date = q.date;
+    }
     if (q.categoryId !== undefined) {
       if (!/^\d{1,15}$/.test(q.categoryId)) throw new AppError(400, 'categoryId must be a positive integer');
       filter.categoryId = Number(q.categoryId);
@@ -111,6 +115,16 @@ export function buildApp({ db, now = () => new Date(), logger = false, auth, tru
     await softDeleteTransaction(db, idParam(req));
     return reply.status(204).send();
   });
+  // several at once (the table's checkboxes); restore is the Undo for a batch delete
+  const idsBody = (body: unknown): number[] => {
+    const ids = (body as { ids?: unknown } | null)?.ids;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 500 || !ids.every((x) => Number.isInteger(x) && x >= 1 && x <= Number.MAX_SAFE_INTEGER)) {
+      throw new AppError(400, 'ids must be a list of 1 to 500 transaction ids');
+    }
+    return [...new Set(ids as number[])];
+  };
+  app.post('/api/transactions/batch-delete', async (req) => ({ deleted: await softDeleteMany(db, idsBody(req.body)) }));
+  app.post('/api/transactions/batch-restore', async (req) => ({ restored: await restoreMany(db, idsBody(req.body)) }));
   app.post('/api/transactions/:id/restore', async (req) => restoreTransaction(db, idParam(req)));
 
   // ---- recurring expenses (subscriptions, utilities)

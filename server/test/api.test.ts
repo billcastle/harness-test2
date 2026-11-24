@@ -234,7 +234,7 @@ describe('summary insights', () => {
   it('is quiet, not wrong, when there is no data', async () => {
     expect(await insights()).toMatchObject({
       elapsedDays: 15, averagePerDayCentavos: 0, averageExpenseCentavos: 0, medianExpenseCentavos: 0,
-      largest: null, mostFrequent: null, topBySpend: null, busiestDay: null, priciestWeekday: null, small: null,
+      largest: null, topExpenses: [], mostFrequent: null, topBySpend: null, busiestDay: null, priciestWeekday: null, small: null,
       recurring: [], uncategorized: null, refunds: null, previous: null,
     });
   });
@@ -340,5 +340,41 @@ describe('error handling', () => {
     expect(r.statusCode).toBe(400);
     expect(JSON.parse(r.body)).toHaveProperty('error');
     expect(r.body).not.toMatch(/at \w+ \(/);
+  });
+});
+
+describe('transaction search by amount, and the date field', () => {
+  const found = async (q: string) => ((await call('GET', `/api/transactions?q=${encodeURIComponent(q)}`)).body.items as { description: string }[]).map((x) => x.description).sort();
+  beforeEach(async () => {
+    await addTx({ amount: '250', date: '2026-11-05', description: 'Lunch' });
+    await addTx({ amount: '250.50', date: '2026-11-06', description: 'Taxi' });
+    await addTx({ amount: '1250.5', date: '2026-10-05', description: 'Phone' });
+  });
+
+  it('a whole number matches that peso amount with or without decimals', async () => {
+    expect(await found('250')).toEqual(['Lunch', 'Taxi']);
+    expect(await found('250.00')).toEqual(['Lunch']);
+    expect(await found('₱250.5')).toEqual(['Taxi']);
+    expect(await found('1,250.50')).toEqual(['Phone']);
+  });
+  it('the date field is one exact day and wins over the range', async () => {
+    const day = async (qs: string) => ((await call('GET', `/api/transactions?${qs}`)).body.items as { description: string }[]).map((x) => x.description);
+    expect(await day('date=2026-11-05')).toEqual(['Lunch']);
+    expect(await day('date=2026-10-05&from=2026-11-01&to=2026-11-30')).toEqual(['Phone']);
+    expect((await call('GET', '/api/transactions?date=nope')).status).toBe(400);
+  });
+  it('still searches descriptions', async () => {
+    expect(await found('tax')).toEqual(['Taxi']);
+  });
+});
+
+describe('batch delete and restore', () => {
+  it('deletes several, restores them, and rejects bad input', async () => {
+    const ids = [(await addTx()).body.id, (await addTx()).body.id, (await addTx()).body.id] as number[];
+    expect((await call('POST', '/api/transactions/batch-delete', { ids: [ids[0], ids[1], 999999] })).body).toEqual({ deleted: 2 });
+    expect((await call('GET', '/api/transactions')).body.total).toBe(1);
+    expect((await call('POST', '/api/transactions/batch-restore', { ids })).body).toEqual({ restored: 2 });
+    expect((await call('GET', '/api/transactions')).body.total).toBe(3);
+    for (const bad of [{}, { ids: [] }, { ids: ['1'] }, { ids: [0] }]) expect((await call('POST', '/api/transactions/batch-delete', bad)).status).toBe(400);
   });
 });

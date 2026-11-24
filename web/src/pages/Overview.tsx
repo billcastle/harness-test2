@@ -14,6 +14,7 @@ export function OverviewPage() {
       const n = new URLSearchParams(p);
       n.set('from', r.from);
       n.set('to', r.to);
+      n.delete('date');
       n.delete('page');
       return n;
     });

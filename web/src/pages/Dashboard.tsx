@@ -5,11 +5,12 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CategoryPie, CategoryTable } from '../components/CategoryPie';
-import { KeyFindings, PreviousComparison, SummaryStats } from '../components/KeyFindings';
+import { KeyFindings, PreviousComparison, Stat, SummaryStats } from '../components/KeyFindings';
 import { RangeControl } from '../components/RangeControl';
 import { useCategories } from '../hooks';
-import { api } from '../lib/api';
+import { api, type Summary } from '../lib/api';
 import { manilaToday, rangeFromParams, rangeLabel, type Range } from '../lib/dates';
 import { formatPeso } from '../lib/money';
 import { amountLabel } from './Recurring';
@@ -85,30 +86,54 @@ export function DashboardPage({ showRange = true }: { showRange?: boolean }) {
             <CardContent>{asTable ? <CategoryTable rows={data.byCategory} /> : <CategoryPie rows={data.byCategory} />}</CardContent>
           </Card>
 
-          {data.recurring.items.length > 0 && (
-            <Card data-testid="recurring-card">
-              <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle>Recurring in this period</CardTitle>
-                <Link to="/recurring" className="font-medium text-primary underline underline-offset-4">Manage</Link>
-              </CardHeader>
-              <CardContent>
-                <ul className="grid gap-4">
-                  {data.recurring.items.map((r) => (
-                    <li key={r.id} className="flex items-start justify-between gap-4" data-recurring={r.description}>
-                      <span className="grid min-w-0 gap-0.5">
-                        <span className="break-words">{r.description}</span>
-                        <span className="text-sm text-muted-foreground">{r.frequency === 'yearly' ? `${amountLabel(r)}, a twelfth each month` : amountLabel(r)}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums">{formatPeso(r.costCentavos)}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-5 flex justify-between border-t pt-4 font-medium"><span>Total recurring</span><span className="tabular-nums">{formatPeso(data.recurring.totalCentavos)}</span></p>
-              </CardContent>
-            </Card>
-          )}
+          {data.recurring.items.length > 0 && <RecurringSection recurring={data.recurring} />}
         </>
       )}
     </div>
+  );
+}
+
+/** Recurring bills and subscriptions that count in the chosen period: highlight cards, then a table. */
+function RecurringSection({ recurring }: { recurring: Summary['recurring'] }) {
+  const biggest = recurring.items.reduce((b, r) => (r.costCentavos > b.costCentavos ? r : b));
+  return (
+    <section aria-labelledby="recurring-title" className="grid gap-4 sm:gap-6" data-testid="recurring-card">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="recurring-title" className="text-xl font-semibold tracking-tight">Recurring in this period</h2>
+        <Link to="/recurring" className="font-medium text-primary underline underline-offset-4">Manage</Link>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:gap-5">
+        <Stat label="Total recurring" value={formatPeso(recurring.totalCentavos)} detail={`${recurring.items.length} ${recurring.items.length === 1 ? 'bill' : 'bills'}`} testId="recurring-total" />
+        <Stat label="Most expensive recurring" value={formatPeso(biggest.costCentavos)} detail={biggest.description} testId="recurring-biggest" />
+      </div>
+      <div className="rounded-2xl border bg-card p-2">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Description</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Billed</TableHead>
+              <TableHead className="text-right">This period</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recurring.items.map((r) => (
+              <TableRow key={r.id} data-recurring={r.description}>
+                <TableCell className="whitespace-normal break-words">{r.description}</TableCell>
+                <TableCell>{r.categoryName}</TableCell>
+                <TableCell className="text-muted-foreground">{r.frequency === 'yearly' ? `${amountLabel(r)}, a twelfth each month` : amountLabel(r)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatPeso(r.costCentavos)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell colSpan={3}>Total recurring</TableCell>
+              <TableCell className="text-right tabular-nums">{formatPeso(recurring.totalCentavos)}</TableCell>
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </div>
+    </section>
   );
 }

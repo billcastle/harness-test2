@@ -15,9 +15,16 @@ type Auth = 'checking' | 'signed-in' | 'signed-out';
 export function App() {
   const qc = useQueryClient();
   const [params] = useSearchParams();
-  // the Overview keeps its date range in the URL; the nav link back to it carries the range along
-  const rangeSearch = params.get('from') && params.get('to') ? `?from=${params.get('from')}&to=${params.get('to')}` : '';
+  // the Overview keeps its date range in the URL; the nav link back to it carries the range along, and remembers it while
+  // you are on another tab (whose URL has no range)
+  const [rangeSearch, setRangeSearch] = useState('');
+  const urlRange = params.get('from') && params.get('to') ? `?from=${params.get('from')}&to=${params.get('to')}` : '';
+  useEffect(() => { if (urlRange) setRangeSearch(urlRange); }, [urlRange]);
   const [auth, setAuth] = useState<Auth>('checking');
+  const { pathname } = useLocation();
+
+  // a new tab starts at the top of the page, not wherever the last one was scrolled to
+  useEffect(() => { window.scrollTo?.(0, 0); }, [pathname]);
 
   useEffect(() => {
     // Any 401 (an expired session) returns to the PIN screen. The query cache is kept, so signing back in resumes where you were.

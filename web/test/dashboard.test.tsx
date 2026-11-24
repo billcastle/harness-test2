@@ -137,10 +137,13 @@ describe('recurring on the dashboard', () => {
     expect(await screen.findByTestId('net-total')).toHaveTextContent('₱2,549.00'); // 1,000 + 549 + 1,000 (12,000 / 12)
     expect(screen.getByTestId('includes-recurring')).toHaveTextContent('Includes ₱1,549.00 of recurring bills and subscriptions');
     const card = screen.getByTestId('recurring-card');
-    expect(within(card).getByText('Insurance').closest('li')).toHaveTextContent('₱12,000.00 / year, a twelfth each month');
-    expect(within(card).getByText('Insurance').closest('li')).toHaveTextContent('₱1,000.00');
-    expect(within(card).getByText('Netflix').closest('li')).toHaveTextContent('₱549.00 / month');
-    expect(within(card).getByText(/Total recurring/).closest('p')).toHaveTextContent('₱1,549.00');
+    const row = card.querySelector('[data-recurring="Insurance"]')!;
+    expect(row).toHaveTextContent('₱12,000.00 / year, a twelfth each month');
+    expect(row).toHaveTextContent('₱1,000.00');
+    expect(within(screen.getByTestId('recurring-total')).getByText('₱1,549.00')).toBeInTheDocument();
+    expect(screen.getByTestId('recurring-biggest')).toHaveTextContent('Insurance');
+    expect(card.querySelector('[data-recurring="Netflix"]')).toHaveTextContent('₱549.00 / month');
+    expect(within(card).getAllByText(/Total recurring/).map((e) => e.closest('tr, div')).some((e) => e?.textContent?.includes('₱1,549.00'))).toBe(true);
     expect(within(card).getByRole('link', { name: 'Manage' })).toHaveAttribute('href', '/recurring');
   });
 
@@ -161,7 +164,7 @@ describe('recurring on the dashboard', () => {
 
 describe('key findings', () => {
   const empty: Insights = {
-    elapsedDays: 15, averagePerDayCentavos: 0, averageExpenseCentavos: 0, medianExpenseCentavos: 0, largest: null, mostFrequent: null,
+    elapsedDays: 15, averagePerDayCentavos: 0, averageExpenseCentavos: 0, medianExpenseCentavos: 0, largest: null, topExpenses: [], mostFrequent: null,
     topBySpend: null, busiestDay: null, priciestWeekday: null, small: null, recurring: [], uncategorized: null, refunds: null, previous: null,
   };
   const summary = (insights: Partial<Insights>, over: Partial<Summary> = {}): Summary => ({
@@ -194,6 +197,19 @@ describe('key findings', () => {
     expect(screen.getByTestId('finding-top-spend')).toHaveTextContent('Laptop bag'); // a different story from the most frequent one
     expect(screen.getByTestId('finding-busiest')).toHaveTextContent('Nov 7, 2026');
     expect(screen.getByTestId('finding-weekday')).toHaveTextContent('Saturdays');
+  });
+
+  it('lists the top expenses, highest first, behind Show more', async () => {
+    const ref = (id: number, description: string, amountCentavos: number) => ({ id, date: '2026-11-07', description, amountCentavos, categoryName: 'Shopping' });
+    const top = [ref(1, 'Laptop bag', 50_000), ref(2, 'Shoes', 30_000), ref(3, 'Lunch', 10_000)];
+    const user = userEvent.setup();
+    render(<KeyFindings data={summary({ largest: top[0]!, topExpenses: top })} onReviewUncategorized={() => undefined} />);
+    expect(screen.queryByTestId('top-expenses')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /show more/i }));
+    const rows = within(screen.getByTestId('top-expenses')).getAllByRole('row').slice(1);
+    expect(rows.map((r) => r.getAttribute('data-top-expense'))).toEqual(['1', '2', '3']);
+    await user.click(screen.getByRole('button', { name: /show less/i }));
+    expect(screen.queryByTestId('top-expenses')).not.toBeInTheDocument();
   });
 
   it('leaves out cards it has nothing honest to say for, and does not repeat the same merchant twice', () => {

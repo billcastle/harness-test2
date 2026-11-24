@@ -32,7 +32,9 @@ export function useTransactionMutations() {
   const update = useMutation({ mutationFn: (v: { id: number; input: TransactionInput }) => api.updateTransaction(v.id, v.input), onSuccess: refresh });
   const remove = useMutation({ mutationFn: (id: number) => api.deleteTransaction(id), onSuccess: refresh });
   const restore = useMutation({ mutationFn: (id: number) => api.restoreTransaction(id), onSuccess: refresh });
-  return { create, update, remove, restore };
+  const removeMany = useMutation({ mutationFn: (ids: number[]) => api.deleteTransactions(ids), onSuccess: refresh });
+  const restoreMany = useMutation({ mutationFn: (ids: number[]) => api.restoreTransactions(ids), onSuccess: refresh });
+  return { create, update, remove, restore, removeMany, restoreMany };
 }
 
 /** Category changes touch what the lists, the pickers and the dashboard show, so everything that depends on them refreshes. */

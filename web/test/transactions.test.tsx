@@ -58,7 +58,7 @@ describe('loading and states', () => {
   it('search that matches nothing shows a filter-specific empty state, and Clear filters resets it', async () => {
     const { user } = setup([{ description: 'Lunch', date: `${month}-02` }]);
     await screen.findByText('Lunch');
-    await user.type(screen.getByLabelText('Search description'), 'zzz');
+    await user.type(screen.getByLabelText('Search description or amount'), 'zzz');
     expect(await screen.findByText('No transactions match these filters.')).toBeInTheDocument();
     expect(url()).toContain('q=zzz');
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
@@ -115,7 +115,7 @@ describe('quick add', () => {
     const { user } = setup([]);
     await screen.findByText('No transactions in this range.');
     const amount = screen.getByLabelText('Amount');
-    expect(amount).toHaveFocus(); // the form is ready to type into
+    expect(amount).not.toHaveFocus(); // opening the page must not steal focus (it scrolls the page down to the form)
     await user.type(amount, '250.50');
     await user.tab();
     const category = screen.getByRole('combobox', { name: 'Category' });
@@ -446,5 +446,63 @@ describe('tablet layout (640 to 1023px)', () => {
     setMobile(false);
     setup([{ description: 'Lunch', date: `${month}-02` }]);
     expect(await screen.findByRole('table')).toBeInTheDocument();
+  });
+});
+
+describe('select and delete several', () => {
+  const seed = [
+    { description: 'Lunch', date: `${month}-02`, amountCentavos: 15000 },
+    { description: 'Taxi', date: `${month}-03`, amountCentavos: 20000 },
+    { description: 'Coffee', date: `${month}-04`, amountCentavos: 9000 },
+  ];
+
+  it('deletes the checked rows in one request, and Undo restores them', async () => {
+    const { user } = setup(seed);
+    await screen.findByText('Lunch');
+    await user.click(within(rowOf('Lunch')).getByRole('checkbox'));
+    await user.click(within(rowOf('Taxi')).getByRole('checkbox'));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete selected' }));
+    await user.click(screen.getByRole('button', { name: 'Delete 2' }));
+    await waitFor(() => expect(api.callsTo('POST', '/api/transactions/batch-delete')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText('Lunch')).not.toBeInTheDocument());
+    expect(screen.getByText('Coffee')).toBeInTheDocument();
+    await screen.findByText('Deleted 2 transactions');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(api.callsTo('POST', '/api/transactions/batch-restore')).toHaveLength(1));
+    expect(await screen.findByText('Lunch')).toBeInTheDocument();
+    expect(screen.getByText('Taxi')).toBeInTheDocument();
+  });
+
+  it('the header checkbox selects everything on the page, and Keep backs out', async () => {
+    const { user } = setup(seed);
+    await screen.findByText('Lunch');
+    await user.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    expect(screen.getByText('3 selected')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete selected' }));
+    await user.click(screen.getByRole('button', { name: 'Keep' }));
+    expect(api.callsTo('POST', '/api/transactions/batch-delete')).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+  });
+});
+
+describe('filter by date field', () => {
+  it('shows one exact day regardless of the range, and clearing it returns to the range', async () => {
+    const { user } = setup([
+      { description: 'Lunch', date: `${month}-02` },
+      { description: 'Old shoes', date: '2026-03-09' },
+    ]);
+    await screen.findByText('Lunch');
+    expect(screen.queryByText('Old shoes')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Filter by date'), { target: { value: '2026-03-09' } });
+    expect(await screen.findByText('Old shoes')).toBeInTheDocument();
+    expect(screen.queryByText('Lunch')).not.toBeInTheDocument();
+    expect(url()).toContain('date=2026-03-09');
+    expect(api.callsTo('GET', '/api/transactions').at(-1)!.url).toContain('date=2026-03-09');
+    await user.click(screen.getByRole('button', { name: 'Clear date filter' }));
+    expect(screen.getByLabelText('Filter by date')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Clear date filter' })).not.toBeInTheDocument();
+    expect(await screen.findByText('Lunch')).toBeInTheDocument();
   });
 });

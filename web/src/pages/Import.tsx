@@ -294,6 +294,7 @@ function PreviewRowItem({ row, edit, categories, onChange, similar, onApplySimil
           )}
           {row.review && <Badge variant="outline">Check</Badge>}
           {row.fromRule && <span className="text-xs text-muted-foreground">category from your earlier choice</span>}
+          {!row.fromRule && row.guessed && <span className="text-xs text-muted-foreground">category guessed, check it</span>}
         </div>
         {row.review && <p className="mt-1 text-xs text-muted-foreground">{row.reason}</p>}
         {similar > 0 && (

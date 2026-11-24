@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { guessCategoryId } from '../src/import/guess.js';
 import { formatCentavos, MoneyError, parseAmount } from '../src/lib/money.js';
 import { isValidDate, manilaToday, monthRange, spanDays } from '../src/lib/time.js';
 import { parseTrustProxy } from '../src/lib/trust-proxy.js';
@@ -152,5 +153,22 @@ describe('parseTrustProxy', () => {
     expect(parseTrustProxy('')).toBe(false);
     expect(parseTrustProxy('TRUE')).toBe(true);
     expect(parseTrustProxy('10.0.0.1, 172.28.0.0/24')).toEqual(['10.0.0.1', '172.28.0.0/24']);
+  });
+});
+
+describe('guessCategoryId', () => {
+  const cats = [{ id: 2, name: 'Transport' }, { id: 3, name: 'Shopping' }, { id: 4, name: 'Subscriptions' }, { id: 5, name: 'Food' }];
+  it.each([
+    ['Payment to Grab, Merchant Transaction Number: G1', 2],
+    ['MOVEIT RIDE', 2],
+    ['SHOPEE MANILA PH', 3],
+    ['Lazada Philippines', 3],
+    ['Payment to Spotify', 4],
+    ['Payment to Google, Merchant Transaction Number: G31', 4],
+    ['GRABFOOD ORDER', 5],
+    ['Transfer to Juan', null],
+    ['Meralco', null], // no Bills category to land in
+  ])('%s -> %s', (d, id) => {
+    expect(guessCategoryId(d, cats)).toBe(id);
   });
 });

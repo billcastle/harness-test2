@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { formatPeso } from '../lib/money';
 const times = (n: number) => (n === 2 ? 'twice' : `${n} times`);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-function Stat({ label, value, detail, testId }: { label: string; value: string; detail?: ReactNode; testId?: string }) {
+export function Stat({ label, value, detail, testId }: { label: string; value: string; detail?: ReactNode; testId?: string }) {
   return (
     <div className="grid content-start gap-1 rounded-2xl border bg-card p-4 sm:p-5" data-testid={testId}>
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -66,12 +66,43 @@ export function PreviousComparison({ data, today }: { data: Summary; today: stri
   );
 }
 
+/** The ten biggest expenses of the period, highest first, shown inside the "Most expensive purchase" card. */
+function TopExpenses({ rows }: { rows: Summary['insights']['topExpenses'] }) {
+  return (
+    <table className="w-full text-sm" data-testid="top-expenses">
+      <caption className="sr-only">Top {rows.length} most expensive purchases</caption>
+      <thead>
+        <tr className="border-b border-primary-foreground/30 text-left opacity-80">
+          <th scope="col" className="py-1.5 pr-3 font-medium">#</th>
+          <th scope="col" className="py-1.5 pr-3 font-medium">Description</th>
+          <th scope="col" className="hidden py-1.5 pr-3 font-medium sm:table-cell">Category</th>
+          <th scope="col" className="py-1.5 pr-3 font-medium">Date</th>
+          <th scope="col" className="py-1.5 text-right font-medium">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((x, n) => (
+          <tr key={x.id} className="border-b border-primary-foreground/15 last:border-0" data-top-expense={x.id}>
+            <td className="py-1.5 pr-3 tabular-nums opacity-80">{n + 1}</td>
+            <td className="py-1.5 pr-3 break-words">{x.description || 'No description'}</td>
+            <td className="hidden py-1.5 pr-3 sm:table-cell">{x.categoryName}</td>
+            <td className="py-1.5 pr-3 whitespace-nowrap tabular-nums">{shortDate(x.date)}</td>
+            <td className="py-1.5 text-right font-medium tabular-nums">{formatPeso(x.amountCentavos)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function KeyFindings({ data, onReviewUncategorized }: { data: Summary; onReviewUncategorized: () => void }) {
   const i = data.insights;
   const { largest, mostFrequent, topBySpend, busiestDay, priciestWeekday, small, recurring, uncategorized, refunds } = i;
   // the top spender is only worth its own card when it is a different story from the most frequent one
   const spendCard = topBySpend && topBySpend.name !== mostFrequent?.name ? topBySpend : null;
   const total = data.byCategory.reduce((s, c) => s + Math.max(0, c.netCentavos), 0);
+  const [showTop, setShowTop] = useState(false);
+  const top = i.topExpenses ?? [];
 
   return (
     <section aria-labelledby="findings-title" className="grid gap-4 sm:gap-6">
@@ -88,6 +119,14 @@ export function KeyFindings({ data, onReviewUncategorized }: { data: Summary; on
               <span>{shortDate(largest.date)}</span>
               {total > 0 && <span>{Math.round((largest.amountCentavos / total) * 100)}% of everything spent in this period</span>}
             </p>
+            {top.length > 1 && (
+              <>
+                <Button type="button" variant="secondary" className="justify-self-start" aria-expanded={showTop} onClick={() => setShowTop((v) => !v)}>
+                  {showTop ? 'Show less' : `Show more (top ${top.length})`}
+                </Button>
+                {showTop && <TopExpenses rows={top} />}
+              </>
+            )}
           </CardContent>
         </Card>
       )}

@@ -48,6 +48,8 @@ export interface Insights {
   averageExpenseCentavos: number;
   medianExpenseCentavos: number;
   largest: ExpenseRef | null;
+  /** The ten biggest expenses (refunds excluded), highest first. */
+  topExpenses: ExpenseRef[];
   /** Merchants seen at least twice. */
   mostFrequent: MerchantStat | null;
   topBySpend: MerchantStat | null;
@@ -155,6 +157,11 @@ async function insightsFor(db: Db, from: string, to: string, today: string, stan
     if (!largest || x.amount > largest.amountCentavos) largest = { id: x.id, date: x.date, description: x.description, amountCentavos: x.amount, categoryName: x.category };
   }
 
+  const topExpenses: ExpenseRef[] = [...expenses]
+    .sort((a, b) => b.amount - a.amount || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) || b.id - a.id)
+    .slice(0, 10)
+    .map((x) => ({ id: x.id, date: x.date, description: x.description, amountCentavos: x.amount, categoryName: x.category }));
+
   // merchants: grouped by the normalized description with reference numbers removed; shown under the latest wording
   const merchants = new Map<string, MerchantStat & { amounts: Map<number, Set<string>> }>();
   for (const x of expenses) {
@@ -223,6 +230,7 @@ async function insightsFor(db: Db, from: string, to: string, today: string, stan
     averageExpenseCentavos: expenses.length ? Math.round(amounts.reduce((s, v) => s + v, 0) / expenses.length) : 0,
     medianExpenseCentavos: median,
     largest,
+    topExpenses,
     mostFrequent: repeated[0] ? stat(repeated[0]) : null,
     topBySpend: bySpend[0] ? stat(bySpend[0]) : null,
     busiestDay: busiest,

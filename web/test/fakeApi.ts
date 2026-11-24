@@ -27,6 +27,7 @@ function fakeInsights(rows: Transaction[], net: (t: Transaction) => number, days
     elapsedDays: days, averagePerDayCentavos: Math.round(total / days), averageExpenseCentavos: expenses.length ? Math.round(sum / expenses.length) : 0,
     medianExpenseCentavos: expenses.length ? [...expenses].map((t) => t.amountCentavos).sort((a, b) => a - b)[expenses.length >> 1]! : 0,
     largest: largest && { id: largest.id, date: largest.date, description: largest.description, amountCentavos: largest.amountCentavos, categoryName: largest.categoryName },
+    topExpenses: [...expenses].sort((a, b) => b.amountCentavos - a.amountCentavos).slice(0, 10).map((t) => ({ id: t.id, date: t.date, description: t.description, amountCentavos: t.amountCentavos, categoryName: t.categoryName })),
     mostFrequent: null, topBySpend: null, busiestDay: null, priciestWeekday: null, small: null, recurring: [], uncategorized: null, refunds: null, previous: null,
   };
 }
@@ -191,8 +192,11 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
     if (p === '/api/transactions' && method === 'GET') {
       const q = url.searchParams;
       let rows = txs.filter((t) => !t.deleted);
-      if (q.get('from')) rows = rows.filter((t) => t.date >= q.get('from')!);
-      if (q.get('to')) rows = rows.filter((t) => t.date <= q.get('to')!);
+      if (q.get('date')) rows = rows.filter((t) => t.date === q.get('date'));
+      else {
+        if (q.get('from')) rows = rows.filter((t) => t.date >= q.get('from')!);
+        if (q.get('to')) rows = rows.filter((t) => t.date <= q.get('to')!);
+      }
       if (q.get('categoryId')) rows = rows.filter((t) => t.categoryId === Number(q.get('categoryId')));
       if (q.get('q')) rows = rows.filter((t) => t.description.toLowerCase().includes(q.get('q')!.toLowerCase()));
       rows.sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1));
@@ -209,6 +213,12 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
       };
       txs.push(tx);
       return json(201, tx);
+    }
+    if ((p === '/api/transactions/batch-delete' || p === '/api/transactions/batch-restore') && method === 'POST') {
+      const del = p.endsWith('delete');
+      const hit = txs.filter((t) => (body!.ids as number[]).includes(t.id) && Boolean(t.deleted) === !del);
+      for (const t of hit) t.deleted = del;
+      return json(200, del ? { deleted: hit.length } : { restored: hit.length });
     }
     const m = /^\/api\/transactions\/(\d+)(\/restore)?$/.exec(p);
     if (m) {

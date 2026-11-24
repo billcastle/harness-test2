@@ -11,6 +11,7 @@ The database is a Neon Postgres. `deploy/build-vercel.mjs` assembles `.vercel/ou
 3. **Vercel:** import the repo. Framework preset "Other"; the build settings come from `vercel.json`. Add these environment variables (Production):
    - `DATABASE_URL` = the Neon pooled string
    - `ALLOWED_ORIGIN` = `https://expenses.yourdomain.com` (exact origin, https, no trailing slash)
+   - `CRON_SECRET` = a long random string (`openssl rand -hex 32`). Vercel sends it to the monthly cleanup job; without it the job refuses to run
    - `TRUST_PROXY` = `true` (Vercel overwrites `X-Forwarded-For`; this makes the per-IP lockout see the real client)
 4. **Domain:** Vercel project, Settings, Domains: add your subdomain and create the CNAME it shows. Certificates are automatic.
 5. **Set the PIN once, from your own machine** (migrations run on the first request, so deploy first, load the site once, then):
@@ -18,6 +19,20 @@ The database is a Neon Postgres. `deploy/build-vercel.mjs` assembles `.vercel/ou
    cd server && DATABASE_URL='<neon string>' npm run reset-pin
    ```
    The PIN is typed at a hidden prompt. Run the same command to reset it later.
+
+## Monthly cleanup (Vercel Cron)
+
+`deploy/build-vercel.mjs` registers a cron that calls `GET /api/cron/monthly` at 00:00 UTC on the 1st (8am Manila).
+It is checked against `CRON_SECRET`, not the PIN. Each run is safe to repeat and only touches what it is sure about:
+
+1. Tidies stray spaces in descriptions.
+2. Gives Uncategorized transactions a category: your remembered merchants first, then a keyword guess (Grab is Transport, Shopee is Shopping, Spotify is Subscriptions ...) among the categories you already have. Unsure ones stay Uncategorized.
+3. Finds charges that repeat (same merchant and amount once a month for 3+ months in a row, still going; or yearly) and adds them to Recurring if they are not there yet. Those transactions leave the list (soft-deleted, so the total is counted once, by the recurring entry). Re-importing an old statement will bring them back; leave them out of the import.
+4. Remembers merchants that have always gone to one category (3+ times), so the next import pre-fills them.
+5. Purges deleted transactions past the undo window, expired sessions and old login counters.
+
+The result is in the function log ("monthly maintenance: ..."). To run it by hand:
+`curl -H "Authorization: Bearer $CRON_SECRET" https://expenses.yourdomain.com/api/cron/monthly`
 
 ## Backups
 

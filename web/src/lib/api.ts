@@ -36,6 +36,8 @@ export interface TransactionPage {
 export interface TransactionFilter {
   from?: string;
   to?: string;
+  /** One exact day; wins over from and to. */
+  date?: string;
   q?: string;
   categoryId?: number;
   batchId?: string;
@@ -127,6 +129,7 @@ export interface RecurringInput {
   endDate?: string | null;
 }
 
+export interface ExpenseRef { id: number; date: string; description: string; amountCentavos: number; categoryName: string }
 export interface MerchantStat {
   name: string;
   count: number;
@@ -138,7 +141,9 @@ export interface Insights {
   averagePerDayCentavos: number;
   averageExpenseCentavos: number;
   medianExpenseCentavos: number;
-  largest: { id: number; date: string; description: string; amountCentavos: number; categoryName: string } | null;
+  largest: ExpenseRef | null;
+  /** The ten biggest expenses, highest first. */
+  topExpenses: ExpenseRef[];
   mostFrequent: MerchantStat | null;
   topBySpend: MerchantStat | null;
   busiestDay: { date: string; totalCentavos: number; count: number } | null;
@@ -170,6 +175,7 @@ export interface PreviewRow {
   duplicateOf: number | null;
   suggestedCategoryId: number;
   fromRule: boolean;
+  guessed?: boolean;
   include: boolean;
 }
 export interface ParseIssue {
@@ -241,10 +247,12 @@ export const api = {
   deleteRecurring: (id: number) => request<void>('DELETE', `/api/recurring/${id}`),
   summary: (from: string, to: string) => request<Summary>('GET', `/api/summary?${qs({ from, to })}`),
   transactions: (f: TransactionFilter) =>
-    request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, page: f.page })}`),
+    request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, date: f.date, page: f.page })}`),
   createTransaction: (input: TransactionInput) => request<Transaction>('POST', '/api/transactions', input),
   updateTransaction: (id: number, input: TransactionInput) => request<Transaction>('PATCH', `/api/transactions/${id}`, input),
   deleteTransaction: (id: number) => request<void>('DELETE', `/api/transactions/${id}`),
+  deleteTransactions: (ids: number[]) => request<{ deleted: number }>('POST', '/api/transactions/batch-delete', { ids }),
+  restoreTransactions: (ids: number[]) => request<{ restored: number }>('POST', '/api/transactions/batch-restore', { ids }),
   restoreTransaction: (id: number) => request<Transaction>('POST', `/api/transactions/${id}/restore`),
   // The PDF is sent as the raw request body; the server checks the bytes, not the file name.
   parseStatement: async (file: File, bank: Bank | null, signal?: AbortSignal): Promise<Preview> => {

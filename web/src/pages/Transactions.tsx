@@ -1,9 +1,12 @@
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,7 +19,7 @@ import { TransactionListItem, TransactionRow } from '../components/TransactionRo
 import { TransactionSheet } from '../components/TransactionSheet';
 import { useCategories, useIsCompact, useIsMobile, useTransactionMutations } from '../hooks';
 import { api, type Transaction } from '../lib/api';
-import { manilaToday, rangeFromParams, type Range } from '../lib/dates';
+import { isValidDate, manilaToday, rangeFromParams, shortDate, type Range } from '../lib/dates';
 import { formatPeso } from '../lib/money';
 
 /** `showRange={false}` when a parent page already shows the range control (the Overview page). */
@@ -24,13 +27,15 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
   const [params, setParams] = useSearchParams();
   const mobile = useIsMobile();
   const compact = useIsCompact(); // tablets too: the inline-editable table needs about 1000px
-  const { remove, restore } = useTransactionMutations();
+  const { remove, restore, removeMany, restoreMany } = useTransactionMutations();
   const categoriesQuery = useCategories();
   const categories = categoriesQuery.data ?? [];
 
   // everything that defines the view lives in the URL: range, search, category, page
   const range = rangeFromParams(params, manilaToday());
   const q = params.get('q') ?? '';
+  const dayParam = params.get('date');
+  const day = isValidDate(dayParam) ? dayParam : undefined; // one exact day, whatever the range is
   const categoryId = params.get('category') ? Number(params.get('category')) : undefined;
   const page = Math.max(1, Number(params.get('page') ?? 1) || 1);
   const batchId = params.get('batch') ?? undefined; // set after an import: show exactly that import's rows, whatever their dates
@@ -41,7 +46,7 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
       for (const [k, v] of Object.entries(changes)) (v === null || v === '' ? next.delete(k) : next.set(k, v));
       return next;
     });
-  const setRange = (r: Range) => patch({ from: r.from, to: r.to, page: null });
+  const setRange = (r: Range) => patch({ from: r.from, to: r.to, date: null, page: null });
 
   // search box: debounced into the URL
   const [qInput, setQInput] = useState(q);
@@ -54,13 +59,34 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
   }, [qInput]);
 
   const query = useQuery({
-    queryKey: ['transactions', batchId ?? null, range.from, range.to, q, categoryId ?? null, page],
-    queryFn: () => api.transactions({ ...(batchId ? { batchId } : { from: range.from, to: range.to }), q: q || undefined, categoryId, page }),
+    queryKey: ['transactions', batchId ?? null, range.from, range.to, day ?? null, q, categoryId ?? null, page],
+    queryFn: () => api.transactions({ ...(batchId ? { batchId } : day ? { date: day } : { from: range.from, to: range.to }), q: q || undefined, categoryId, page }),
     placeholderData: keepPreviousData,
   });
 
   const data = query.data;
   const [editing, setEditing] = useState<Transaction | null>(null);
+
+  // checkbox selection for batch delete; it only means something for the rows on screen, so a new view clears it
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmingBatch, setConfirmingBatch] = useState(false);
+  const viewKey = `${batchId ?? ''}|${range.from}|${range.to}|${day ?? ''}|${q}|${categoryId ?? ''}|${page}`;
+  useEffect(() => { setSelected(new Set()); setConfirmingBatch(false); }, [viewKey]);
+  const toggle = (tx: Transaction, on: boolean) => setSelected((s) => { const n = new Set(s); if (on) n.add(tx.id); else n.delete(tx.id); return n; });
+  const pageIds = data?.items.map((t) => t.id) ?? [];
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  async function deleteSelected() {
+    const ids = [...selected];
+    setConfirmingBatch(false);
+    try {
+      await removeMany.mutateAsync(ids);
+    } catch {
+      toast('Could not delete. Check your connection and try again.', { duration: 6000 });
+      return;
+    }
+    setSelected(new Set());
+    toast(`Deleted ${ids.length} ${ids.length === 1 ? 'transaction' : 'transactions'}`, { duration: 6000, action: { label: 'Undo', onClick: () => restoreMany.mutate(ids) } });
+  }
   const [flashId, setFlashId] = useState<number | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -90,8 +116,8 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
   }
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-  const filtered = Boolean(q || categoryId);
-  const clearFilters = () => patch({ q: null, category: null, page: null });
+  const filtered = Boolean(q || categoryId || day);
+  const clearFilters = () => patch({ q: null, category: null, date: null, page: null });
 
   return (
     <div className="grid gap-8">
@@ -106,10 +132,17 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
 
       {!mobile && <QuickAddForm categories={categories} onCreated={onCreated} />}
 
-      <div className="grid gap-5 sm:grid-cols-[1fr_16rem]">
+      <div className="grid gap-5 sm:grid-cols-[1fr_17rem_14rem]">
         <div className="grid gap-2">
-          <Label htmlFor="search">Search description</Label>
-          <Input id="search" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} />
+          <Label htmlFor="search">Search description or amount</Label>
+          <Input id="search" type="search" placeholder="Grab, 250, 250.50" value={qInput} onChange={(e) => setQInput(e.target.value)} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="day-filter">Filter by date</Label>
+          <div className="flex gap-2">
+            <Input id="day-filter" className="min-w-0 flex-1" type="date" value={day ?? ''} onChange={(e) => patch({ date: e.target.value || null, page: null })} />
+            {day && <Button type="button" variant="outline" size="icon" className="shrink-0" aria-label="Clear date filter" title="Clear date filter" onClick={() => patch({ date: null, page: null })}><HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} aria-hidden /></Button>}
+          </div>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="cat-filter">Filter by category</Label>
@@ -122,6 +155,7 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
           </Select>
         </div>
       </div>
+      {day && <p className="-mt-4 text-sm text-muted-foreground">Showing {shortDate(day)} only, ignoring the date range.</p>}
 
       {query.isError && !data ? (
         <Alert variant="destructive" className="flex items-center justify-between gap-4 p-5">
@@ -149,9 +183,30 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
             </ul>
           ) : (
             <div className="rounded-3xl border bg-card p-2">
+              {selected.size > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2" role="status">
+                  <span className="font-medium">{selected.size} selected</span>
+                  <div className="flex gap-2">
+                    {confirmingBatch ? (
+                      <>
+                        <Button type="button" variant="destructive" size="sm" onClick={() => void deleteSelected()}>Delete {selected.size}</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingBatch(false)}>Keep</Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
+                        <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmingBatch(true)}>Delete selected</Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox checked={allSelected ? true : selected.size > 0 ? 'indeterminate' : false} onCheckedChange={(v) => setSelected(v === true ? new Set(pageIds) : new Set())} aria-label="Select all on this page" />
+                    </TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Category</TableHead>
@@ -161,7 +216,7 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
                 </TableHeader>
                 <TableBody>
                   {data.items.map((tx) => (
-                    <TransactionRow key={tx.id} tx={tx} categories={categories} flash={tx.id === flashId} onEdit={setEditing} onDelete={onDelete} />
+                    <TransactionRow key={tx.id} tx={tx} categories={categories} flash={tx.id === flashId} selected={selected.has(tx.id)} onSelect={toggle} onEdit={setEditing} onDelete={onDelete} />
                   ))}
                 </TableBody>
               </Table>
