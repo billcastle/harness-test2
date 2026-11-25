@@ -74,16 +74,18 @@ export function TransactionRow({
 }
 
 /** Phone list row (below 640px): tapping opens the edit sheet. */
-export function TransactionListItem({ tx, flash, onEdit }: { tx: Transaction; flash: boolean; onEdit: (tx: Transaction) => void }) {
+export function TransactionListItem({ tx, flash, selected, onSelect, onEdit }: { tx: Transaction; flash: boolean; selected: boolean; onSelect: (tx: Transaction, on: boolean) => void; onEdit: (tx: Transaction) => void }) {
   return (
-    <li>
+    <li className="flex items-center gap-2">
+      <Checkbox className="mx-2 shrink-0" checked={selected} onCheckedChange={(v) => onSelect(tx, v === true)} aria-label={`Select ${tx.description || 'transaction'} on ${tx.date}`} />
       <button
         type="button"
         onClick={() => onEdit(tx)}
         data-tx-id={tx.id}
         className={cn(
-          'grid min-h-20 w-full grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-2xl border bg-card p-5 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          'grid min-h-20 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-2xl border bg-card p-5 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50',
           flash && 'flash bg-primary/10',
+          selected && 'border-primary bg-primary/5',
         )}
       >
         <span className="min-w-0 text-base break-words">{tx.description || 'No description'}<KindBadge kind={tx.kind} /></span>

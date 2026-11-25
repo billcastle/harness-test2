@@ -506,3 +506,32 @@ describe('filter by date field', () => {
     expect(await screen.findByText('Lunch')).toBeInTheDocument();
   });
 });
+
+describe('select and delete several on a phone', () => {
+  it('a checkbox on each row selects without opening the edit sheet, and Delete selected removes them', async () => {
+    setMobile(true);
+    const { user } = setup([
+      { description: 'Lunch', date: `${month}-02` },
+      { description: 'Taxi', date: `${month}-03` },
+      { description: 'Coffee', date: `${month}-04` },
+    ]);
+    await screen.findByText('Lunch');
+    await user.click(screen.getByRole('checkbox', { name: `Select Lunch on ${month}-02` }));
+    await user.click(screen.getByRole('checkbox', { name: `Select Taxi on ${month}-03` }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(); // tapping the box did not open the editor
+    await user.click(screen.getByRole('button', { name: 'Delete selected' }));
+    await user.click(screen.getByRole('button', { name: 'Delete 2' }));
+    await waitFor(() => expect(api.callsTo('POST', '/api/transactions/batch-delete')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText('Lunch')).not.toBeInTheDocument());
+    expect(screen.getByText('Coffee')).toBeInTheDocument();
+  });
+
+  it('Select all on this page selects every row', async () => {
+    setMobile(true);
+    const { user } = setup([{ description: 'Lunch', date: `${month}-02` }, { description: 'Taxi', date: `${month}-03` }]);
+    await screen.findByText('Lunch');
+    await user.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+});

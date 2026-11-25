@@ -115,6 +115,26 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
     });
   }
 
+
+  const selectionBar = selected.size > 0 && (
+    <div className={compact ? 'sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 shadow-lg' : 'flex flex-wrap items-center justify-between gap-3 px-3 py-2'} role="status">
+      <span className="font-medium">{selected.size} selected</span>
+      <div className="flex gap-2">
+        {confirmingBatch ? (
+          <>
+            <Button type="button" variant="destructive" size="sm" onClick={() => void deleteSelected()}>Delete {selected.size}</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingBatch(false)}>Keep</Button>
+          </>
+        ) : (
+          <>
+            <Button type="button" variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
+            <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmingBatch(true)}>Delete selected</Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const filtered = Boolean(q || categoryId || day);
   const clearFilters = () => patch({ q: null, category: null, date: null, page: null });
@@ -178,29 +198,19 @@ export function TransactionsPage({ showRange = true }: { showRange?: boolean }) 
       ) : data ? (
         <div className="grid gap-6">
           {compact ? (
-            <ul className="grid gap-3">
-              {data.items.map((tx) => <TransactionListItem key={tx.id} tx={tx} flash={tx.id === flashId} onEdit={setEditing} />)}
-            </ul>
+            <div className="grid gap-3">
+              <label className="flex items-center gap-3 px-1 text-muted-foreground">
+                <Checkbox checked={allSelected ? true : selected.size > 0 ? 'indeterminate' : false} onCheckedChange={(v) => setSelected(v === true ? new Set(pageIds) : new Set())} aria-label="Select all on this page" />
+                Select all on this page
+              </label>
+              <ul className="grid gap-3">
+                {data.items.map((tx) => <TransactionListItem key={tx.id} tx={tx} flash={tx.id === flashId} selected={selected.has(tx.id)} onSelect={toggle} onEdit={setEditing} />)}
+              </ul>
+              {selectionBar}
+            </div>
           ) : (
             <div className="rounded-3xl border bg-card p-2">
-              {selected.size > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2" role="status">
-                  <span className="font-medium">{selected.size} selected</span>
-                  <div className="flex gap-2">
-                    {confirmingBatch ? (
-                      <>
-                        <Button type="button" variant="destructive" size="sm" onClick={() => void deleteSelected()}>Delete {selected.size}</Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingBatch(false)}>Keep</Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
-                        <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmingBatch(true)}>Delete selected</Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+              {selectionBar}
               <Table>
                 <TableHeader>
                   <TableRow>
