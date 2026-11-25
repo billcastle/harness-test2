@@ -42,7 +42,8 @@ describe('Dashboard', () => {
     expect(foodRow).toHaveTextContent('80%');
     expect(document.querySelector('[data-category="Transport"]')).toHaveTextContent('20%');
     expect(screen.getByRole('img', { name: 'Spending by category: Food 80%, Transport 20%' })).toBeInTheDocument();
-    expect(screen.queryByText('Spending over time')).not.toBeInTheDocument();
+    expect(await screen.findByText('Spending over time')).toBeInTheDocument(); // the month-by-month chart
+    expect(screen.getByRole('img', { name: /^Spending by month:/ })).toBeInTheDocument();
     // the big slice takes the long way round (large-arc flag 1), the small one the short way
     expect(document.querySelector('[data-slice="Food"]')!.getAttribute('d')).toMatch(/A [\d.]+ [\d.]+ 0 1 1 /);
     expect(document.querySelector('[data-slice="Transport"]')!.getAttribute('d')).toMatch(/A [\d.]+ [\d.]+ 0 0 1 /);

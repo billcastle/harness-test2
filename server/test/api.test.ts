@@ -378,3 +378,20 @@ describe('batch delete and restore', () => {
     for (const bad of [{}, { ids: [] }, { ids: ['1'] }, { ids: [0] }]) expect((await call('POST', '/api/transactions/batch-delete', bad)).status).toBe(400);
   });
 });
+
+describe('trends', () => {
+  it('returns spending by month and category, with recurring bills in their months, ending at the current month', async () => {
+    const food = await addCat('Food');
+    await addTx({ amount: '100', date: '2026-11-02', categoryId: food });
+    await addTx({ amount: '50', date: '2026-10-20', categoryId: food });
+    await addTx({ amount: '30', date: '2026-10-21' });
+    await call('POST', '/api/recurring', { description: 'Netflix', amount: '500', frequency: 'monthly', categoryId: food, startDate: '2026-10-05' });
+    const r = await call('GET', '/api/trends?months=3');
+    expect(r.status).toBe(200);
+    expect(r.body.months).toEqual(['2026-09', '2026-10', '2026-11']);
+    expect(r.body.series.map((s: { name: string }) => s.name)).toEqual(['Food', 'Uncategorized']);
+    expect(r.body.series[0].centavos).toEqual([0, 5000 + 50000, 10000 + 50000]);
+    expect(r.body.totals).toEqual([0, 58000, 60000]);
+    expect((await call('GET', '/api/trends?months=1')).status).toBe(400);
+  });
+});

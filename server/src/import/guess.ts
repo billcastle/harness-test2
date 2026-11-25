@@ -9,12 +9,12 @@ interface Group {
 
 // Order matters: the first group that matches wins, so "grab food" is Food before "grab" is Transport.
 const GROUPS: Group[] = [
-  { names: ['food', 'food & dining', 'dining', 'restaurants', 'eating out'], pattern: /\b(grab ?food|foodpanda|jollibee|mcdonald'?s?|kfc|starbucks|mang inasal|chowking|greenwich|shakey'?s?|yellow cab|burger king|dunkin|tim hortons|coffee bean|bonchon|army navy|pizza hut|domino'?s?|subway|cafe|restaurant|bakery)\b/ },
-  { names: ['groceries', 'grocery', 'food', 'food & dining'], pattern: /\b(puregold|landers|s&r|supermarket|7[- ]?eleven|ministop|alfamart|uncle john'?s|robinsons? (easymart|supermarket)|walter ?mart|shopwise|savemore|grocery)\b/ },
+  { names: ['food', 'food & dining', 'food and drinks', 'food & drinks', 'dining', 'restaurants', 'eating out'], pattern: /\b(grab ?food|mcdelivery|mcdo|jfc|zus|foodpanda|jollibee|mcdonald'?s?|kfc|starbucks|mang inasal|chowking|greenwich|shakey'?s?|yellow cab|burger king|dunkin|tim hortons|coffee bean|bonchon|army navy|pizza hut|domino'?s?|subway|cafe|restaurant|bakery)\b/ },
+  { names: ['groceries', 'grocery', 'food', 'food & dining', 'food and drinks', 'food & drinks'], pattern: /\b(puregold|landers|s&r|supermarket|7[- ]?eleven|ministop|alfamart|uncle john'?s|robinsons? (easymart|supermarket)|walter ?mart|shopwise|savemore|grocery)\b/ },
   { names: ['transport', 'transportation', 'travel', 'commute'], pattern: /\b(grab|move ?it|angkas|joyride|lalamove|uber|taxi|beep|mrt|lrt|easytrip|autosweep|petron|caltex|shell|phoenix|seaoil|cebu pacific|cebgo|airasia|philippine airlines|pal express|toll)\b/ },
   { names: ['shopping', 'online shopping'], pattern: /\b(shopee|lazada|zalora|temu|shein|amazon|uniqlo|h&m|ikea|sm store|national book store|decathlon|miniso|daiso|tiktok shop)\b/ },
   { names: ['subscriptions', 'subscription', 'streaming'], pattern: /\b(spotify|google|netflix|youtube|icloud|apple\.com|apple services|disney|hbo|openai|chatgpt|anthropic|claude|adobe|microsoft|canva|github|dropbox|notion|prime video|viu|vivamax)\b/ },
-  { names: ['bills', 'bills & utilities', 'utilities'], pattern: /\b(meralco|maynilad|manila water|pldt|converge|globe|smart|dito|sky cable|bills payment|buy load)\b/ },
+  { names: ['bills', 'bills & utilities', 'utilities'], pattern: /\b(meralco|maynilad|manila water|pldt|converge|globe|smart|dito|sky cable|bills payment|buy load|load)\b/ },
   { names: ['health', 'healthcare', 'medical', 'pharmacy'], pattern: /\b(mercury drug|watsons|southstar|rose pharmacy|hospital|clinic|dental|pharmacy|medical)\b/ },
   { names: ['entertainment', 'leisure'], pattern: /\b(cinema|steam|playstation|nintendo|ticketnet|smtickets|klook|bowling)\b/ },
 ];

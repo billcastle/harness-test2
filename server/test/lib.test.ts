@@ -166,6 +166,9 @@ describe('guessCategoryId', () => {
     ['Payment to Spotify', 4],
     ['Payment to Google, Merchant Transaction Number: G31', 4],
     ['GRABFOOD ORDER', 5],
+    ['McDelivery', 5],
+    ['JFC', 5],
+    ['ZUS COFFEE', 5],
     ['Transfer to Juan', null],
     ['Meralco', null], // no Bills category to land in
   ])('%s -> %s', (d, id) => {

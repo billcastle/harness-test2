@@ -81,6 +81,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   return data as T;
 }
 
+export interface Trends {
+  months: string[];
+  series: { categoryId: number; name: string; color: string; centavos: number[] }[];
+  totals: number[];
+}
+
 export interface Summary {
   from: string;
   to: string;
@@ -245,6 +251,7 @@ export const api = {
   createRecurring: (input: RecurringInput) => request<Recurring>('POST', '/api/recurring', input),
   updateRecurring: (id: number, input: RecurringInput) => request<Recurring>('PATCH', `/api/recurring/${id}`, input),
   deleteRecurring: (id: number) => request<void>('DELETE', `/api/recurring/${id}`),
+  trends: (to: string, months: number) => request<Trends>('GET', `/api/trends?${qs({ to, months })}`),
   summary: (from: string, to: string) => request<Summary>('GET', `/api/summary?${qs({ from, to })}`),
   transactions: (f: TransactionFilter) =>
     request<TransactionPage>('GET', `/api/transactions?${qs({ from: f.from, to: f.to, q: f.q, categoryId: f.categoryId, batchId: f.batchId, date: f.date, page: f.page })}`),

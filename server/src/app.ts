@@ -13,6 +13,7 @@ import {
   createTransaction, listTransactions, parseTransactionBody, restoreMany, restoreTransaction, softDeleteMany, softDeleteTransaction, updateTransaction,
 } from './repo/transactions.js';
 import { summarize } from './repo/summary.js';
+import { trends } from './repo/trends.js';
 import { createRecurring, deleteRecurring, listRecurring, parseRecurringBody, updateRecurring } from './repo/recurring.js';
 
 export interface AppDeps {
@@ -140,6 +141,15 @@ export function buildApp({ db, now = () => new Date(), logger = false, auth, tru
   app.get('/api/summary', async (req) => {
     const { from, to } = rangeQuery(req.query as Record<string, string | undefined>, today());
     return summarize(db, from, to, today());
+  });
+
+  // ---- spending by month and category, for the months ending at `to` (default: this month)
+  app.get('/api/trends', async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    if (q.to !== undefined && !isValidDate(q.to)) throw new AppError(400, 'to must be a real date');
+    const months = q.months === undefined ? 6 : Number(q.months);
+    if (!Number.isInteger(months) || months < 2 || months > 24) throw new AppError(400, 'months must be a whole number from 2 to 24');
+    return trends(db, q.to ?? today(), months, today());
   });
 
   // ---- statement import: upload a PDF, review the preview, confirm

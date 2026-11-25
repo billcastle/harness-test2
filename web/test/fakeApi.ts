@@ -189,6 +189,13 @@ export function createFakeApi(seed: { categories?: Category[]; transactions?: Pa
         return json(200, r);
       }
     }
+    if (p === '/api/trends' && method === 'GET') {
+      const count = Number(url.searchParams.get('months') ?? 6);
+      const [y, mo] = url.searchParams.get('to')!.split('-').map(Number) as [number, number];
+      const months = Array.from({ length: count }, (_, i) => { const d = new Date(Date.UTC(y, mo - 1 - (count - 1 - i), 1)); return d.toISOString().slice(0, 7); });
+      const totals = months.map((m) => txs.filter((t) => !t.deleted && t.kind === 'expense' && t.date.startsWith(m)).reduce((s, t) => s + t.amountCentavos, 0));
+      return json(200, { months, series: [{ categoryId: 1, name: 'Uncategorized', color: '#94a3b8', centavos: totals }], totals });
+    }
     if (p === '/api/transactions' && method === 'GET') {
       const q = url.searchParams;
       let rows = txs.filter((t) => !t.deleted);

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CategoryPie, CategoryTable } from '../components/CategoryPie';
+import { TrendsChart } from '../components/TrendsChart';
 import { KeyFindings, PreviousComparison, Stat, SummaryStats } from '../components/KeyFindings';
 import { RangeControl } from '../components/RangeControl';
 import { useCategories } from '../hooks';
@@ -25,6 +26,9 @@ export function DashboardPage({ showRange = true }: { showRange?: boolean }) {
 
   const query = useQuery({ queryKey: ['summary', range.from, range.to], queryFn: () => api.summary(range.from, range.to), placeholderData: keepPreviousData });
   const data = query.data;
+  const [trendMonths, setTrendMonths] = useState(6);
+  // under 'summary' so every edit that refreshes the summary refreshes this too
+  const trends = useQuery({ queryKey: ['summary', 'trends', range.to, trendMonths], queryFn: () => api.trends(range.to, trendMonths), placeholderData: keepPreviousData });
   const categories = useCategories().data ?? [];
   // jump to the transactions list filtered to what has no category yet
   const reviewUncategorized = () => {
@@ -85,6 +89,20 @@ export function DashboardPage({ showRange = true }: { showRange?: boolean }) {
             </CardHeader>
             <CardContent>{asTable ? <CategoryTable rows={data.byCategory} /> : <CategoryPie rows={data.byCategory} />}</CardContent>
           </Card>
+
+          {trends.data && trends.data.totals.some((v) => v !== 0) && (
+            <Card data-testid="trends-card">
+              <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle>Spending over time</CardTitle>
+                <div className="flex gap-2" role="group" aria-label="Months shown">
+                  {[6, 12].map((m) => (
+                    <Button key={m} type="button" size="sm" variant={trendMonths === m ? 'default' : 'outline'} aria-pressed={trendMonths === m} onClick={() => setTrendMonths(m)}>{m} months</Button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent><TrendsChart trends={trends.data} thisMonth={today.slice(0, 7)} /></CardContent>
+            </Card>
+          )}
 
           {data.recurring.items.length > 0 && <RecurringSection recurring={data.recurring} />}
         </>
